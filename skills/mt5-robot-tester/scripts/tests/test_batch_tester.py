@@ -5,9 +5,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from mt5_batch_tester import (  # noqa: E402
-    build_backtest_ini, build_optimize_param_ini, build_round1_ini,
+    acquire_lock, build_backtest_ini, build_optimize_param_ini, build_round1_ini,
     compute_range, evaluate_finalist, evaluate_round2_profile, experts_relpath,
-    inputs_from_passes, select_strategy_params,
+    inputs_from_passes, release_lock, select_strategy_params,
 )
 from parse_mt5_optimization import parse_passes  # noqa: E402
 
@@ -159,6 +159,23 @@ def test_backtest_ini_optimization_0_with_inputs(tmp_path):
     assert "Symbol=US100.cash" in ini
     assert "[TesterInputs]" in ini
     assert "StopLossCoef1=1" in ini
+
+
+def test_lock_takes_over_stale_pid(tmp_path):
+    lock = tmp_path / ".pipeline.lock"
+    lock.write_text("999999999")               # a PID that is not running
+    assert acquire_lock(lock) is True          # stale -> taken over
+    import os
+    assert lock.read_text().strip() == str(os.getpid())
+    release_lock(lock)
+
+
+def test_lock_release_removes_own_lock(tmp_path):
+    lock = tmp_path / ".pipeline.lock"
+    assert acquire_lock(lock) is True
+    assert lock.exists()
+    release_lock(lock)
+    assert not lock.exists()
 
 
 def test_optimize_param_ini_range_syntax(tmp_path):

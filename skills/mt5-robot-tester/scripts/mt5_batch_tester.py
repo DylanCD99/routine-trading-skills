@@ -541,9 +541,15 @@ class Pipeline:
             if not symbols:
                 return self._finish(name, "error",
                                     "R1: falta lista de símbolos (config common.symbols)", st)
-            self.log(f"[{name}] Ronda 1: backtests en {len(symbols)} símbolos")
-            passes = []
-            for sym in symbols:
+            # Resume mid-Round-1: reuse symbols already backtested.
+            passes = st.get("round1_passes") or []
+            done = {p["symbol"] for p in passes}
+            if not passes:
+                self.log(f"[{name}] Ronda 1: backtests en {len(symbols)} símbolos")
+            for i, sym in enumerate(symbols, 1):
+                if sym in done:
+                    continue
+                self.log(f"[{name}] R1 {i}/{len(symbols)}: {sym}")
                 rname = self.report_name(name, f"R1_{sym}")
                 ini = build_backtest_ini(expert, sym, self.common, rname)
                 report, status, _ = self._run(ini, name, f"R1_{sym}", rname,
@@ -555,6 +561,10 @@ class Pipeline:
                                    "trades": m.get("total_trades")})
                 else:
                     passes.append({"symbol": sym, "profit": None, "status": status})
+                # Checkpoint after every symbol so progress survives interruption.
+                st["status"] = "round1"
+                st["round1_passes"] = passes
+                self._save_state()
             gate = gate_round1(passes, self.common["deposit"],
                                self.gates["round1_min_positive"],
                                self.gates["round1_min_profit_multiple"])
@@ -789,6 +799,43 @@ def load_config(path: Optional[str]) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def _pid_alive(pid: int) -> bool:
+    try:
+        if sys.platform == "win32":
+            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"],
+                                 capture_output=True, text=True, timeout=10)
+            return str(pid) in out.stdout
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def acquire_lock(lock_path: Path) -> bool:
+    """Acquire a PID lock; returns False if another live pipeline holds it."""
+    if lock_path.exists():
+        try:
+            pid = int(lock_path.read_text().strip() or "0")
+        except (ValueError, OSError):
+            pid = 0
+        if pid and pid != os.getpid() and _pid_alive(pid):
+            return False
+        # stale lock -> take it over
+    try:
+        lock_path.write_text(str(os.getpid()), encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+def release_lock(lock_path: Path) -> None:
+    try:
+        if lock_path.exists() and lock_path.read_text().strip() == str(os.getpid()):
+            lock_path.unlink()
+    except OSError:
+        pass
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     # Windows consoles default to cp1252; make our output UTF-8 safe.
     for stream in (sys.stdout, sys.stderr):
@@ -856,24 +903,35 @@ def main(argv: Optional[list[str]] = None) -> int:
               "$MT5_TERMINAL_PATH o config.terminal_path.", file=sys.stderr)
         return 1
 
-    pipe = Pipeline(config, output_dir, terminal, timeout, args.portable, args.resume)
-    pipe.learn.bump_run()
-    pipe.log(f"Terminal: {terminal}")
-    pipe.log(f"Candidatos: {candidates_dir} ({len(bots)} bots)")
+    # Prevent concurrent runs: two pipelines share one MT5 data folder and would
+    # collide (only one terminal instance per data folder is allowed).
+    lock = output_dir / ".pipeline.lock"
+    if not acquire_lock(lock):
+        print(f"error: ya hay un pipeline en ejecución (lock {lock}). Espera a que "
+              "termine o bórralo si es un lock huérfano.", file=sys.stderr)
+        return 1
 
-    for ex5 in bots:
-        try:
-            pipe.process_bot(ex5)
-        except Exception as e:  # keep the loop resilient; record and continue
-            pipe.log(f"[{ex5.stem}] ERROR inesperado: {e}")
-            st = pipe.state["bots"].setdefault(ex5.stem, {})
-            st.update({"status": "done", "verdict": "error", "reason": str(e)})
-            pipe._save_state()
+    try:
+        pipe = Pipeline(config, output_dir, terminal, timeout, args.portable, args.resume)
+        pipe.learn.bump_run()
+        pipe.log(f"Terminal: {terminal}")
+        pipe.log(f"Candidatos: {candidates_dir} ({len(bots)} bots)")
 
-    pipe.learn.save(markdown_path=pipe._learn_md)
-    md, js = pipe.write_leaderboard()
-    pipe.log(f"Leaderboard: {md}")
-    pipe.log(f"Learnings:   {pipe.learn.path}")
+        for ex5 in bots:
+            try:
+                pipe.process_bot(ex5)
+            except Exception as e:  # keep the loop resilient; record and continue
+                pipe.log(f"[{ex5.stem}] ERROR inesperado: {e}")
+                st = pipe.state["bots"].setdefault(ex5.stem, {})
+                st.update({"status": "done", "verdict": "error", "reason": str(e)})
+                pipe._save_state()
+
+        pipe.learn.save(markdown_path=pipe._learn_md)
+        md, js = pipe.write_leaderboard()
+        pipe.log(f"Leaderboard: {md}")
+        pipe.log(f"Learnings:   {pipe.learn.path}")
+    finally:
+        release_lock(lock)
     return 0
 
 
