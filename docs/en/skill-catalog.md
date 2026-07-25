@@ -273,5 +273,6 @@ A comprehensive catalog of all 64 Claude Trading Skills organized by category. B
 | Pre Trade Discipline Gate | -- | -- | -- |
 | COT Contrarian Detector | Required | -- | -- |
 | News Reaction Failure Analyzer | Required | -- | -- |
+| Mt5 Robot Tester | -- | -- | -- |
 
 "--" means not required. "Optional" means functionality is enhanced but the skill works without it.

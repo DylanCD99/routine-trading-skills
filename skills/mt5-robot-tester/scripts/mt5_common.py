@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""Shared helpers for the mt5-robot-tester skill.
+
+Pure standard library (no pandas / lxml / BeautifulSoup) so the parsers run on
+any Python 3.9+ interpreter, including the one bundled with MetaTrader 5.
+
+Contains:
+  * Robust file reading across the encodings MT5 emits.
+  * A locale-tolerant number parser (space thousands separator, ``,`` or ``.``
+    decimal).
+  * Header normalization so English *and* Spanish MT5 reports map to the same
+    canonical metric keys.
+  * A minimal HTML ``<table>`` row extractor and a SpreadsheetML (Excel XML) row
+    extractor, both returning ``list[list[str]]``.
+"""
+from __future__ import annotations
+
+import re
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Optional
+from xml.etree import ElementTree as ET
+
+# Encodings MT5 has been observed to write reports in, tried in order.
+_ENCODINGS = ("utf-16", "utf-8-sig", "utf-8", "cp1252", "latin-1")
+
+
+def read_text(path: str | Path) -> str:
+    """Read a report file tolerating the several encodings MT5 uses."""
+    raw = Path(path).read_bytes()
+    for enc in _ENCODINGS:
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def to_float(token: Optional[str]) -> Optional[float]:
+    """Convert an MT5-formatted number to float, or ``None`` if not numeric.
+
+    MT5 uses a space (or NBSP) as the thousands separator and ``.`` as the
+    decimal point (``1 234.56``). Some localized builds use ``,`` as the decimal
+    separator. Both are normalized. Trailing ``%`` and surrounding parentheses
+    are stripped.
+    """
+    if token is None:
+        return None
+    t = str(token).strip()
+    # Keep a leading minus but drop parentheses/percent/currency noise.
+    t = t.replace("(", "").replace(")", "").replace("%", "")
+    t = t.replace("\xa0", "").replace(" ", "").replace(" ", "")
+    if not t or t in {"-", "--"}:
+        return None
+    if "," in t and "." not in t:
+        t = t.replace(",", ".")          # comma decimal locale
+    else:
+        t = t.replace(",", "")           # comma was a thousands separator
+    # Drop any stray trailing currency letters (e.g. "1234USD").
+    m = re.match(r"[-+]?\d*\.?\d+", t)
+    if not m:
+        return None
+    try:
+        return float(m.group(0))
+    except ValueError:
+        return None
+
+
+# --- header normalization (EN + ES) --------------------------------------
+
+# canonical key -> set of lowercased header variants seen in MT5 reports.
+_HEADER_ALIASES: dict[str, set[str]] = {
+    "pass": {"pass", "paso"},
+    "result": {"result", "resultado"},
+    "profit": {"profit", "beneficio", "net profit", "beneficio neto"},
+    "symbol": {"symbol", "símbolo", "simbolo"},
+    "trades": {"trades", "total trades", "total de operaciones",
+               "operaciones", "total de operaciones ejecutadas"},
+    "profit_factor": {"profit factor", "factor de beneficio",
+                      "factor de rentabilidad"},
+    "expected_payoff": {"expected payoff", "beneficio esperado"},
+    "recovery_factor": {"recovery factor", "factor de recuperación",
+                        "factor de recuperacion"},
+    "sharpe": {"sharpe ratio", "ratio de sharpe"},
+    "drawdown_pct": {"equity dd %", "equity drawdown %", "drawdown",
+                     "reducción %", "reduccion %", "reducción", "reduccion"},
+}
+
+# Build reverse lookup once.
+_CANON_BY_ALIAS = {
+    alias: canon for canon, aliases in _HEADER_ALIASES.items() for alias in aliases
+}
+
+# Headers that are standard optimization metrics; anything else is an EA input.
+KNOWN_METRIC_KEYS = set(_HEADER_ALIASES.keys())
+
+
+def canonical_header(header: str) -> Optional[str]:
+    """Map a raw report header to a canonical metric key, or None if it is an
+    EA input parameter column."""
+    return _CANON_BY_ALIAS.get(header.strip().lower())
+
+
+# --- table extraction -----------------------------------------------------
+
+class _TableRows(HTMLParser):
+    """Collect rows of ``<table>`` cells as lists of plain-text strings."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[list[str]] = []
+        self._row: Optional[list[str]] = None
+        self._cell: Optional[list[str]] = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "tr":
+            self._row = []
+        elif tag in ("td", "th") and self._row is not None:
+            self._cell = []
+
+    def handle_endtag(self, tag):
+        if tag in ("td", "th") and self._cell is not None:
+            self._row.append(" ".join("".join(self._cell).split()))
+            self._cell = None
+        elif tag == "tr" and self._row is not None:
+            self.rows.append(self._row)
+            self._row = None
+
+    def handle_data(self, data):
+        if self._cell is not None:
+            self._cell.append(data)
+
+
+def html_table_rows(text: str) -> list[list[str]]:
+    """Return all ``<table>`` rows in an HTML document as text-cell lists."""
+    parser = _TableRows()
+    parser.feed(text)
+    return parser.rows
+
+
+_SS_NS = "urn:schemas-microsoft-com:office:spreadsheet"
+
+
+def xml_spreadsheet_rows(text: str) -> list[list[str]]:
+    """Return rows from a SpreadsheetML (Excel 2003 XML) document.
+
+    Honors ``ss:Index`` for sparse cells by padding with empty strings so column
+    alignment with the header row is preserved.
+    """
+    # ElementTree needs the declaration stripped of a BOM; read_text handled it.
+    root = ET.fromstring(text)
+    ns = {"ss": _SS_NS}
+    rows: list[list[str]] = []
+    for row in root.iter(f"{{{_SS_NS}}}Row"):
+        cells: list[str] = []
+        col = 0
+        for cell in row.findall(f"{{{_SS_NS}}}Cell"):
+            index = cell.get(f"{{{_SS_NS}}}Index")
+            if index is not None:
+                target = int(index) - 1
+                while col < target:
+                    cells.append("")
+                    col += 1
+            data = cell.find(f"{{{_SS_NS}}}Data")
+            cells.append((data.text or "").strip() if data is not None else "")
+            col += 1
+        if cells:
+            rows.append(cells)
+    return rows
+
+
+def table_records(path: str | Path) -> list[list[str]]:
+    """Read a report file and return its table rows, auto-detecting XML vs HTML."""
+    text = read_text(path)
+    stripped = text.lstrip("﻿ \t\r\n").lower()
+    if stripped.startswith("<?xml") or "urn:schemas-microsoft-com" in stripped[:2000]:
+        try:
+            rows = xml_spreadsheet_rows(text)
+            if rows:
+                return rows
+        except ET.ParseError:
+            pass
+    return html_table_rows(text)
