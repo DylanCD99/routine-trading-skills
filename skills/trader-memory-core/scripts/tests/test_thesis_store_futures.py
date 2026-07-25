@@ -1460,6 +1460,35 @@ def test_open_position_direct_open_rejects_nan_price(tmp_path: Path):
     assert thesis_store.get(tmp_path, tid)["status"] == "ENTRY_READY"
 
 
+@pytest.mark.parametrize("bad_price", [0, -1.0])
+def test_open_position_futures_still_rejects_nonpositive_price(tmp_path: Path, bad_price):
+    """Issue #257 must not weaken futures' finite-positive price contract."""
+    tid, _ = _register_and_get(
+        tmp_path,
+        ticker=f"ESNONPOS{abs(int(bad_price))}",
+        _source_date="2026-05-01",
+    )
+    thesis_store.transition(
+        tmp_path,
+        tid,
+        "ENTRY_READY",
+        "ok",
+        event_date="2026-05-01T00:00:00+00:00",
+    )
+
+    with pytest.raises(ValueError, match="requires a finite positive actual_price"):
+        thesis_store.open_position(
+            tmp_path,
+            tid,
+            bad_price,
+            "2026-05-01T00:00:00+00:00",
+            contracts=2,
+            multiplier=50,
+            direction="LONG",
+            contract_currency="USD",
+        )
+
+
 def test_close_futures_rejects_infinite_price(tmp_path: Path):
     """P1-3: an Infinity exit price must be rejected at close time —
     state (status, outcome) must stay unchanged, not persist inf/nan."""
