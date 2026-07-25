@@ -86,6 +86,20 @@ python3 skills/mt5-robot-tester/scripts/mt5_batch_tester.py \
 
 `--resume` skips completed bots and reuses finished rounds.
 
+### Optional — HTML control panel
+
+Launch a local dashboard to see the bots in each folder, each bot's phase and
+verdict, and a **Launch** button — no CLI needed after starting it:
+
+```bash
+python3 skills/mt5-robot-tester/scripts/dashboard.py \
+  --config my_config.json --output-dir reports/mt5_pipeline
+```
+
+It serves `http://127.0.0.1:8765/` (opens automatically, localhost only). The
+page auto-refreshes every 3 s: folder contents, per-bot phase (R1/R2/R3/done),
+pass/fail verdicts, summary counts, and the live `run.log`.
+
 ### Step 5 — Read the results
 
 - `leaderboard_<ts>.md` / `.json` — ranking with verdict and key metrics.

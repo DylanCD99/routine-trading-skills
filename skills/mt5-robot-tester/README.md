@@ -83,6 +83,20 @@ logra **beneficio ≥ 4× depósito** (≥ 40 000) **y** **DD ≤ 12%**. Entonce
 También puedes pasar `--candidates-dir` para sobreescribir la carpeta, y
 `--terminal-path` / `$MT5_TERMINAL_PATH` para el terminal.
 
+## Panel de control HTML (opcional)
+
+Un panel local para ver los bots por carpeta, la fase/veredicto de cada bot, y
+un botón para **lanzar** el pipeline sin usar la terminal:
+
+```bash
+python3 scripts/dashboard.py --config mi_config.json --output-dir reports/mt5_pipeline
+```
+
+Sirve `http://127.0.0.1:8765/` (se abre solo; solo localhost). Muestra en vivo
+(cada 3 s): contenido de las 3 carpetas, fase por bot (R1/R2/R3/terminado),
+veredictos (pasó/no pasó), contadores y el `run.log`. En Windows puedes crear un
+`.bat` que lo abra con doble clic (ver la guía de instalación).
+
 ## Salidas
 
 | Fichero | Contenido |
