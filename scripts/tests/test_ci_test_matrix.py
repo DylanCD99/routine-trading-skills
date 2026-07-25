@@ -184,3 +184,17 @@ def test_cli_unknown_id_is_nonzero(monkeypatch, tmp_path, capsys):
 
     assert main(["run", "missing"]) == 1
     assert "unknown test id" in capsys.readouterr().err
+
+
+def test_pair_and_portfolio_quality_suites_are_blocking_rows():
+    entries = build_entries()
+
+    pair = entries["pair-trade-screener"]
+    portfolio = entries["portfolio-manager"]
+    assert pair.excluded is False
+    assert pair.allowed_failure is False
+    assert pair.requirements == ("statsmodels>=0.14,<0.15",)
+    assert pair.test_paths == ("skills/pair-trade-screener/scripts/tests",)
+    assert portfolio.excluded is False
+    assert portfolio.allowed_failure is False
+    assert portfolio.test_paths == ("skills/portfolio-manager/scripts/tests",)
