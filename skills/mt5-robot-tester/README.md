@@ -25,8 +25,10 @@ Para **cada** `.ex5` de *candidatos*:
 ### Ronda 1 — screening sobre todos los pares
 - Config del probador: intervalo **2020.01.01 → 2026.06.30**, **H1**,
   **Model=4** (ticks reales), retrasos 32 ms, depósito **10 000 USD**, **1:100**.
-- `Optimization=3` (todos los símbolos del **Market Watch**), criterio
-  **Rentabilidad máxima**. Cada símbolo = un resultado.
+- Un **backtest por símbolo** de la lista `common.symbols` (un `Optimization=0`
+  por símbolo). Cada símbolo = un resultado. *(En el build 6061 el XML de
+  `Optimization=3` sale vacío — los resultados van solo al caché `.opt` — por eso
+  se hace por símbolo; ver `references/mt5-cli-reference.md`.)*
 - **Gate (ambas condiciones):**
   1. **≥5 símbolos con beneficio positivo** (los "azules"), y
   2. el **mejor símbolo** da **≥ 3× el depósito** (≥ 30 000).

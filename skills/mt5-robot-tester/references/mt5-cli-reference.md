@@ -85,16 +85,31 @@ GannHiLoPeriod1=43||43||4||129||Y
 - Este skill, en la Ronda 3, pone **un solo** parámetro en rango y **fija** el
   resto en su mejor valor, encadenando de uno en uno.
 
-## Reports
+## Reports — comportamiento REAL verificado (build 6061)
 
-- **Backtest simple** (`Optimization=0`) → HTML (`Report=...` genera `.htm`).
-  Incluye el resumen y, cuando el report completo está disponible, la **tabla de
-  operaciones/deals** (columnas `Hora … Beneficio Balance`) que este skill usa
-  para reconstruir la serie de balance (meses/años/tiempo a nuevo máximo).
-  **(verificar** que tu build incluye la tabla de deals en el report generado por
-  `Report=`; si no, habrá que exportar el historial por otra vía**)**.
-- **Optimización** (`Optimization>0`) → XML (SpreadsheetML) con **un pass por
-  fila** (símbolo/inputs/beneficio…). El parser mapea cabeceras EN y ES.
+Diagnosticado contra MetaTrader 5 build 6061 (cuenta FTMO-Demo):
+
+- **`Report=` DEBE ser un nombre RELATIVO** (sin ruta ni extensión). MT5 **ignora
+  una ruta absoluta** y escribe el reporte en la **raíz de la carpeta de datos**
+  del terminal: `<data>\<nombre>.htm` (backtest) + `<nombre>.png` (gráfico). El
+  orquestador da un nombre relativo y **recoge el fichero de la carpeta de datos**.
+- **Codificación mixta**: el `.htm` del backtest es **UTF-16**; el XML de
+  optimización es **UTF-8**. El lector detecta la codificación por BOM y densidad
+  de bytes nulos.
+- **Tabla de operaciones**: la columna de tiempo se llama **`Fecha/Hora`** (no
+  `Hora`) y existe una columna **`Balance`** → de ahí se reconstruye la serie
+  (meses/años/tiempo a nuevo máximo).
+- **`Optimization=3` (todos los símbolos del Market Watch) NO rellena el XML**
+  (`<nombre>.symbols.xml` sale con cabecera y **0 filas**). Los 73 resultados por
+  símbolo se guardan solo en el **caché binario** `Tester\cache\*.opt`. Por eso
+  este skill hace la **Ronda 1 con un backtest por símbolo** (`Optimization=0`),
+  usando la lista `common.symbols` de la config, en vez de fiarse del XML de
+  optimización.
+- **Optimización de parámetros** (`Optimization=1`, un solo parámetro) → XML
+  SpreadsheetML con una fila por combinación (usado en la Ronda 3).
+- **El terminal se cierra solo** con `ShutdownTerminal=1` al terminar; el runner
+  **espera a ese cierre** (no al primer avistamiento del fichero, que en
+  optimización se escribe incrementalmente).
 
 ## Caveats
 

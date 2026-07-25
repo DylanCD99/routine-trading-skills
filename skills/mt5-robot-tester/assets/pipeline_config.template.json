@@ -10,6 +10,9 @@
     "finalists":  "C:/Users/<USUARIO>/AppData/Roaming/MetaQuotes/Terminal/<HASH>/MQL5/Experts/bots finalistas"
   },
 
+  "sets_dir": null,
+  "_sets_dir_help": "Carpeta opcional con <nombre_bot>.set (inputs del EA). Necesaria para la Ronda 3 (optimización de parámetros); si falta, R3 se omite y el veredicto se decide con la Ronda 2.",
+
   "common": {
     "period": "H1",
     "from": "2020.01.01",
@@ -19,7 +22,13 @@
     "currency": "USD",
     "leverage": 100,
     "delay_ms": 32,
-    "optimization_criterion": 0
+    "optimization_criterion": 0,
+    "_symbols_help": "REQUERIDO: lista de símbolos del Market Watch a testear en la Ronda 1 (un backtest por símbolo). Pon aquí tus pares. Ejemplo de un Market Watch FTMO:",
+    "symbols": [
+      "EURUSD", "GBPUSD", "USDCHF", "USDJPY", "AUDUSD", "NZDUSD", "USDCAD",
+      "XAUUSD", "XAGUSD", "BTCUSD", "US500.cash", "US100.cash", "US30.cash",
+      "NVDA", "TSLA", "AMZN", "MSFT", "AMD", "AVGO"
+    ]
   },
 
   "gates": {

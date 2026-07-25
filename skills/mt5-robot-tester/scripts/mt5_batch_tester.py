@@ -467,6 +467,27 @@ class Pipeline:
     def expert_path(self, ex5: Path) -> str:
         return f"{self.expert_prefix}\\{ex5.name}" if self.expert_prefix else ex5.name
 
+    def _round1_symbols(self) -> Optional[list[str]]:
+        """The Market-Watch symbol list for Round-1 screening (from config)."""
+        syms = self.common.get("symbols") or self.config.get("symbols")
+        return list(syms) if syms else None
+
+    def _discover_inputs(self, name: str, ex5: Path) -> list:
+        """EA inputs for Round-3, from a ``.set`` file (config sets_dir or beside
+        the bot). Returns [] if none — Round 3 is then skipped."""
+        candidates = []
+        sets_dir = self.config.get("sets_dir")
+        if sets_dir:
+            candidates.append(Path(sets_dir) / f"{name}.set")
+        candidates.append(ex5.with_suffix(".set"))
+        for c in candidates:
+            try:
+                if c.exists():
+                    return parse_set_file(c)
+            except OSError:
+                continue
+        return []
+
     def report_name(self, name: str, stub: str) -> str:
         """Safe, relative Report= name (MT5 writes it into the data folder)."""
         safe = re.sub(r"[^A-Za-z0-9]+", "_", f"{name}_{stub}").strip("_")
@@ -512,21 +533,34 @@ class Pipeline:
 
         expert = self.expert_path(ex5)
 
-        # --- Round 1 -------------------------------------------------------
+        # --- Round 1: screen across all pairs via per-symbol backtests -----
+        # Build 6061 leaves the Optimization=3 XML empty (results go to the
+        # binary .opt cache), so we backtest each Market-Watch symbol instead.
         if "round1" not in st:
-            self.log(f"[{name}] Ronda 1: optimización todos los símbolos")
-            rname = self.report_name(name, "R1")
-            ini = build_round1_ini(expert, self.common, rname)
-            report, status, _ = self._run(ini, name, "R1", rname,
-                                          (".symbols.xml", ".xml", ".htm", ".html"))
-            if status != "ok":
-                return self._finish(name, "error", f"R1 {status}", st)
-            passes = parse_passes(report)
+            symbols = self._round1_symbols()
+            if not symbols:
+                return self._finish(name, "error",
+                                    "R1: falta lista de símbolos (config common.symbols)", st)
+            self.log(f"[{name}] Ronda 1: backtests en {len(symbols)} símbolos")
+            passes = []
+            for sym in symbols:
+                rname = self.report_name(name, f"R1_{sym}")
+                ini = build_backtest_ini(expert, sym, self.common, rname)
+                report, status, _ = self._run(ini, name, f"R1_{sym}", rname,
+                                              (".htm", ".html", ".xml"))
+                if status == "ok" and report:
+                    m = parse_report_file(report)
+                    passes.append({"symbol": sym, "profit": m.get("net_profit"),
+                                   "drawdown_pct": m.get("drawdown_max_pct"),
+                                   "trades": m.get("total_trades")})
+                else:
+                    passes.append({"symbol": sym, "profit": None, "status": status})
             gate = gate_round1(passes, self.common["deposit"],
                                self.gates["round1_min_positive"],
                                self.gates["round1_min_profit_multiple"])
             st["round1"] = gate
-            st["inputs"] = inputs_from_passes(passes)
+            st["round1_passes"] = passes
+            st["inputs"] = self._discover_inputs(name, ex5)
             self._save_state()
         gate = st["round1"]
         if not gate["passed"]:
@@ -552,15 +586,23 @@ class Pipeline:
         r2 = st["round2"]
         r2_profit = r2.get("net_profit")
 
-        # --- Round 3: sequential parameter optimization --------------------
+        # --- Round 3: sequential parameter optimization (needs input .set) -
         if "round3" not in st:
-            st["round3"] = self._round3(name, expert, best_symbol, st)
+            if st.get("inputs"):
+                st["round3"] = self._round3(name, expert, best_symbol, st)
+            else:
+                self.log(f"[{name}] R3 omitida (sin .set de inputs); veredicto por R2")
+                st["round3"] = {"per_param": [], "final_metrics": st["round2"],
+                                "best_set": None}
             self._save_state()
         r3 = st["round3"]
 
         final = r3.get("final_metrics") or {}
+        optimized = bool(r3.get("per_param"))
+        gates = (self.gates if optimized
+                 else {**self.gates, "finalist_require_improvement": False})
         passed, reason = evaluate_finalist(final, r2_profit,
-                                           self.common["deposit"], self.gates)
+                                           self.common["deposit"], gates)
         verdict = "finalist" if passed else "rejected"
         st["final_reason"] = reason
         return self._finish(name, verdict, reason, st, ex5=ex5,

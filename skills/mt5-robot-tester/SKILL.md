@@ -13,9 +13,10 @@ pipeline**, moving each bot between folders as it advances, and **learning acros
 runs** to improve selection each loop. The whole run is checkpointed and
 resumable.
 
-- **Round 1 — screening (all symbols):** optimize the EA over every Market-Watch
-  symbol (`Optimization=3`). Gate: **≥5 symbols profitable AND best symbol ≥3×
-  deposit**.
+- **Round 1 — screening (all pairs):** backtest the EA on each symbol in the
+  configured `common.symbols` list (one `Optimization=0` backtest per symbol —
+  MT5 build 6061 leaves the `Optimization=3` XML empty, so per-symbol backtests
+  are used). Gate: **≥5 symbols profitable AND best symbol ≥3× deposit**.
 - **Round 2 — best-pair backtest:** single backtest on the best symbol; analyze
   net profit %, worst drawdown %, % positive months, all-years-positive, LR
   Correlation, months-to-new-high.
@@ -39,7 +40,13 @@ their optimized `.set`.
 - **Windows + MetaTrader 5** installed (the tester runs `terminal64.exe`).
 - Broker **tick data** downloaded (default modeling is real ticks, `Model=4`).
 - The three folders under `MQL5\Experts`: *candidates*, *in-testing*, *finalists*.
-- Symbols to test present in the **Market Watch** (`Optimization=3` iterates them).
+- **`common.symbols`** set in the config — the pairs Round 1 backtests (your
+  Market Watch symbols).
+- Optional per-bot `.set` files (config `sets_dir`) for Round-3 parameter
+  optimization; without them Round 3 is skipped and the verdict comes from
+  Round 2.
+- **Close MetaTrader 5 before running** — the tester needs exclusive use of the
+  data folder.
 - Python 3.9+ (standard library only). No paid API.
 
 ## Workflow
