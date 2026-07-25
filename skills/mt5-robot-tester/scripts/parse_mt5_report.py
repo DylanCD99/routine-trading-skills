@@ -114,12 +114,14 @@ def parse_deals(rows: list[list[str]]) -> list[tuple[dt.date, float]]:
     column) and reads following rows whose time cell holds a date and whose
     balance cell is numeric.
     """
-    time_headers = {"time", "hora", "tiempo", "fecha"}
+    time_tokens = ("hora", "fecha", "time", "tiempo")
     for i, cells in enumerate(rows):
         lower = [c.strip().lower() for c in cells]
-        if "balance" not in lower:
+        if "balance" not in lower:      # the deals table has an exact "Balance" column
             continue
-        time_col = next((j for j, c in enumerate(lower) if c in time_headers), None)
+        # Time column header varies by build/language: "Hora", "Fecha/Hora", "Time"...
+        time_col = next((j for j, c in enumerate(lower)
+                         if any(tok in c for tok in time_tokens)), None)
         bal_col = lower.index("balance")
         if time_col is None:
             continue

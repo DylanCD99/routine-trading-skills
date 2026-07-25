@@ -28,9 +28,11 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -101,6 +103,15 @@ def experts_relpath(candidates_dir: str | Path) -> str:
             return "\\".join(parts[i + 1:])
     # Fall back to just the folder name.
     return Path(candidates_dir).name
+
+
+def mt5_data_dir(candidates_dir: str | Path) -> Optional[Path]:
+    """The MT5 data directory (the folder that contains ``MQL5``)."""
+    parts = list(Path(candidates_dir).parts)
+    for i in range(len(parts) - 1, -1, -1):
+        if parts[i].lower() == "mql5":
+            return Path(*parts[:i])
+    return None
 
 
 def fmt_num(value) -> str:
@@ -316,34 +327,61 @@ def find_terminal(explicit: Optional[str] = None) -> Optional[Path]:
     return None
 
 
-def _find_report(report_no_ext: Path, exts=(".xml", ".htm", ".html")) -> Optional[Path]:
+def _find_report_in(data_dir: Path, report_name: str, exts) -> Optional[Path]:
+    """MT5 writes ``Report=<name>`` to ``<data_dir>\\<name>.<ext>`` (build 6061)."""
     for ext in exts:
-        candidate = report_no_ext.with_suffix(ext)
+        candidate = data_dir / f"{report_name}{ext}"
         if candidate.exists():
             return candidate
     return None
 
 
-def run_tester(terminal: Path, ini_path: Path, report_no_ext: Path,
-               timeout: int, portable: bool, exts) -> tuple[Optional[Path], str]:
-    """Launch MT5 for one config and return (report_path, status)."""
-    stale = _find_report(report_no_ext, exts)
-    if stale:
-        try:
-            stale.unlink()
-        except OSError:
-            pass
+def run_tester(terminal: Path, ini_path: Path, data_dir: Path, report_name: str,
+               timeout: int, portable: bool, exts,
+               poll_interval: float = 3.0) -> tuple[Optional[Path], str]:
+    """Launch MT5 for one config and wait for the report by **polling**.
+
+    Build 6061 ignores an absolute ``Report=`` path and instead writes the report
+    (``.htm`` for a backtest, ``.xml`` for optimization, plus a ``.png`` graph) to
+    the terminal **data folder** using the relative ``Report=`` name. So we poll
+    ``data_dir`` for ``<report_name>.<ext>``. As soon as it appears we close the
+    terminal (it may otherwise stay open) and return; if the terminal exits first
+    we do a final check; otherwise we time out.
+    """
+    for ext in list(exts) + [".png"]:
+        stale = data_dir / f"{report_name}{ext}"
+        if stale.exists():
+            try:
+                stale.unlink()
+            except OSError:
+                pass
     cmd = [str(terminal), f"/config:{ini_path}"]
     if portable:
         cmd.append("/portable")
     try:
-        subprocess.run(cmd, timeout=timeout, check=False)
-    except subprocess.TimeoutExpired:
-        return None, "timeout"
+        proc = subprocess.Popen(cmd)
     except FileNotFoundError:
         return None, "terminal_not_found"
-    report = _find_report(report_no_ext, exts)
-    return (report, "ok") if report else (None, "no_report")
+
+    # Wait for the terminal to close itself (ShutdownTerminal=1 closes it only
+    # when the test/optimization has finished). Do NOT proceed on mere file
+    # appearance — an optimization report is written incrementally (header first,
+    # then one row per symbol), so closing early truncates it to zero results.
+    deadline = time.time() + timeout
+    while proc.poll() is None and time.time() < deadline:
+        time.sleep(poll_interval)
+    timed_out = proc.poll() is None
+    if timed_out:
+        proc.terminate()
+        try:
+            proc.wait(15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+    report = _find_report_in(data_dir, report_name, exts)
+    if report:
+        return report, "ok"
+    return None, ("timeout" if timed_out else "no_report")
 
 
 # ----------------------------------------------------------------------------
@@ -384,6 +422,25 @@ class Pipeline:
         self.finalists = Path(folders["finalists"]) if folders.get("finalists") else None
         self.expert_prefix = (config.get("experts_relpath")
                               or (experts_relpath(self.candidates) if self.candidates else ""))
+        self.mt5_data_dir = mt5_data_dir(self.candidates) if self.candidates else None
+
+    def tester_log_tail(self, n: int = 15) -> str:
+        """Last non-empty lines of the newest MT5 Tester log (decoded UTF-16)."""
+        if not self.mt5_data_dir:
+            return ""
+        logs_dir = self.mt5_data_dir / "Tester" / "logs"
+        try:
+            logs = sorted(logs_dir.glob("*.log"), key=lambda p: p.stat().st_mtime)
+        except OSError:
+            return ""
+        if not logs:
+            return ""
+        try:
+            raw = logs[-1].read_bytes().decode("utf-16", errors="replace")
+        except OSError:
+            return ""
+        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        return " | ".join(lines[-n:])
 
     def _load_state(self) -> dict:
         if self.resume and self.state_path.exists():
@@ -410,12 +467,40 @@ class Pipeline:
     def expert_path(self, ex5: Path) -> str:
         return f"{self.expert_prefix}\\{ex5.name}" if self.expert_prefix else ex5.name
 
-    def _run(self, ini_text: str, name: str, report_stub: str, exts) -> tuple:
-        ini_path = self.ini_dir / f"{name}__{report_stub}.ini"
+    def report_name(self, name: str, stub: str) -> str:
+        """Safe, relative Report= name (MT5 writes it into the data folder)."""
+        safe = re.sub(r"[^A-Za-z0-9]+", "_", f"{name}_{stub}").strip("_")
+        return f"mt5rt_{safe}"[:120]
+
+    def _collect_report(self, src: Path, name: str, stub: str) -> Path:
+        """Move the report (and its .png graph) from the data folder to output."""
+        dest = self.reports_dir / f"{name}__{stub}{src.suffix}"
+        try:
+            shutil.move(str(src), str(dest))
+        except OSError:
+            return src
+        png = src.with_suffix(".png")
+        if png.exists():
+            try:
+                shutil.move(str(png), str(self.reports_dir / f"{name}__{stub}.png"))
+            except OSError:
+                pass
+        return dest
+
+    def _run(self, ini_text: str, name: str, stub: str, report_name: str,
+             exts) -> tuple:
+        ini_path = self.ini_dir / f"{name}__{stub}.ini"
         ini_path.write_text(ini_text, encoding="utf-8")
-        report_no_ext = (self.reports_dir / f"{name}__{report_stub}").resolve()
-        report, status = run_tester(self.terminal, ini_path, report_no_ext,
-                                    self.timeout, self.portable, exts)
+        data_dir = self.mt5_data_dir or self.reports_dir
+        src, status = run_tester(self.terminal, ini_path, data_dir, report_name,
+                                 self.timeout, self.portable, exts)
+        report = None
+        if status == "ok" and src:
+            report = self._collect_report(src, name, stub)
+        else:
+            tail = self.tester_log_tail()
+            if tail:
+                self.log(f"[{name}] tester log: {tail}")
         return report, status, ini_path
 
     def process_bot(self, ex5: Path) -> dict:
@@ -430,9 +515,10 @@ class Pipeline:
         # --- Round 1 -------------------------------------------------------
         if "round1" not in st:
             self.log(f"[{name}] Ronda 1: optimización todos los símbolos")
-            ini = build_round1_ini(expert, self.common,
-                                   (self.reports_dir / f"{name}__R1").resolve())
-            report, status, _ = self._run(ini, name, "R1", (".xml", ".htm", ".html"))
+            rname = self.report_name(name, "R1")
+            ini = build_round1_ini(expert, self.common, rname)
+            report, status, _ = self._run(ini, name, "R1", rname,
+                                          (".symbols.xml", ".xml", ".htm", ".html"))
             if status != "ok":
                 return self._finish(name, "error", f"R1 {status}", st)
             passes = parse_passes(report)
@@ -452,9 +538,10 @@ class Pipeline:
         # --- Round 2 -------------------------------------------------------
         if "round2" not in st:
             self.log(f"[{name}] Ronda 2: backtest en {best_symbol}")
-            ini = build_backtest_ini(expert, best_symbol, self.common,
-                                     (self.reports_dir / f"{name}__R2").resolve())
-            report, status, _ = self._run(ini, name, "R2", (".htm", ".html", ".xml"))
+            rname = self.report_name(name, "R2")
+            ini = build_backtest_ini(expert, best_symbol, self.common, rname)
+            report, status, _ = self._run(ini, name, "R2", rname,
+                                          (".htm", ".html", ".xml"))
             if status != "ok":
                 return self._finish(name, "error", f"R2 {status}", st)
             metrics = parse_report_file(report)
@@ -505,12 +592,11 @@ class Pipeline:
                 continue
             self.log(f"[{name}] R3 optimiza {target} en {rng}")
             cur_inputs = [(n, values[n]) for n, _ in strategy_inputs]
+            rname = self.report_name(name, f"R3_{target}")
             ini = build_optimize_param_ini(
-                expert, symbol, self.common,
-                (self.reports_dir / f"{name}__R3_{target}").resolve(),
-                cur_inputs, target, rng)
-            report, status, _ = self._run(ini, name, f"R3_{target}",
-                                          (".xml", ".htm", ".html"))
+                expert, symbol, self.common, rname, cur_inputs, target, rng)
+            report, status, _ = self._run(ini, name, f"R3_{target}", rname,
+                                          (".xml", ".symbols.xml", ".htm", ".html"))
             if status != "ok":
                 per_param.append({"param": target, "status": status})
                 continue
@@ -536,10 +622,11 @@ class Pipeline:
         # Final backtest with the optimized strategy inputs.
         final_metrics = {}
         self.log(f"[{name}] R3 backtest final optimizado en {symbol}")
-        ini = build_backtest_ini(expert, symbol, self.common,
-                                 (self.reports_dir / f"{name}__final").resolve(),
+        rname = self.report_name(name, "final")
+        ini = build_backtest_ini(expert, symbol, self.common, rname,
                                  inputs=strat_set)
-        report, status, _ = self._run(ini, name, "final", (".htm", ".html", ".xml"))
+        report, status, _ = self._run(ini, name, "final", rname,
+                                       (".htm", ".html", ".xml"))
         if status == "ok":
             final_metrics = parse_report_file(report)
         else:

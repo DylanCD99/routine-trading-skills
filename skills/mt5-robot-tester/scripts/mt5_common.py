@@ -26,9 +26,30 @@ _ENCODINGS = ("utf-16", "utf-8-sig", "utf-8", "cp1252", "latin-1")
 
 
 def read_text(path: str | Path) -> str:
-    """Read a report file tolerating the several encodings MT5 uses."""
+    """Read a report file, detecting the encoding MT5 used.
+
+    MT5 is inconsistent: the backtest ``.htm`` is UTF-16 while the optimization
+    ``.symbols.xml`` is UTF-8. A naive "try utf-16 first" is wrong — decoding a
+    UTF-8 file as UTF-16 does not raise, it silently produces mojibake. So detect
+    by BOM first, then by NUL-byte density (UTF-16 text is ~50% NUL for ASCII),
+    then fall back to the UTF-8 family.
+    """
     raw = Path(path).read_bytes()
-    for enc in _ENCODINGS:
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        try:
+            return raw.decode("utf-16")
+        except UnicodeDecodeError:
+            pass
+    if raw[:3] == b"\xef\xbb\xbf":
+        return raw.decode("utf-8-sig")
+    sample = raw[:512]
+    if sample.count(0) > len(sample) // 4:      # lots of NULs -> UTF-16 no BOM
+        for enc in ("utf-16-le", "utf-16-be"):
+            try:
+                return raw.decode(enc)
+            except UnicodeDecodeError:
+                continue
+    for enc in ("utf-8", "cp1252", "latin-1"):
         try:
             return raw.decode(enc)
         except (UnicodeDecodeError, LookupError):
