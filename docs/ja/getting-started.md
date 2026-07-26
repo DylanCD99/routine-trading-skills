@@ -13,6 +13,8 @@ permalink: /ja/getting-started/
 Claude Trading Skillsのインストール方法、APIキーの設定、最初のスキル実行までをガイドします。
 {: .fs-6 .fw-300 }
 
+以下に出てくるトレード用語が初めての場合は、平易な説明をまとめた[用語集]({{ '/ja/glossary/' | relative_url }})を参照してください。
+
 <details open markdown="block">
   <summary>目次</summary>
   {: .text-delta }
