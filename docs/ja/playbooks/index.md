@@ -2,7 +2,7 @@
 layout: default
 title: プレイブック
 parent: 日本語
-nav_order: 8
+nav_order: 9
 has_children: true
 lang_peer: /en/playbooks/
 permalink: /ja/playbooks/

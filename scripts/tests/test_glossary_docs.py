@@ -139,7 +139,7 @@ def test_glossary_frontmatter_and_navigation_are_reciprocal() -> None:
             assert frontmatter[key] == value
 
         playbooks = _frontmatter(PROJECT_ROOT / "docs" / lang / "playbooks" / "index.md")
-        assert playbooks["nav_order"] == 8
+        assert playbooks["nav_order"] == 9
 
 
 def test_beginner_pages_link_to_the_localized_glossary() -> None:

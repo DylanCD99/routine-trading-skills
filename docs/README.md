@@ -32,6 +32,11 @@ docs/
 ├── en/                          # English documentation
 │   ├── index.md                 # EN top page (parent for all EN children)
 │   ├── getting-started.md
+│   ├── glossary.md              # Plain-language trading terms (matched with JA)
+│   ├── your-first-week.md       # Seven-day onboarding guide (matched with JA)
+│   ├── playbooks/
+│   │   └── index.md             # Playbook parent page
+│   ├── faq.md                   # First-timer FAQ (matched with JA)
 │   ├── skill-catalog.md         # Full catalog table (all skills)
 │   └── skills/
 │       ├── index.md             # Skill Guides index (★ legend, guide table)
@@ -40,6 +45,11 @@ docs/
 ├── ja/                          # Japanese documentation (mirrors en/)
 │   ├── index.md
 │   ├── getting-started.md
+│   ├── glossary.md
+│   ├── your-first-week.md
+│   ├── playbooks/
+│   │   └── index.md
+│   ├── faq.md
 │   ├── skill-catalog.md
 │   └── skills/
 │       ├── index.md
@@ -64,6 +74,7 @@ docs/
 | **Landing page** | `index.md` (root) | Language selector only |
 | **Top page** | `en/index.md`, `ja/index.md` | Category cards, quick-start steps |
 | **Getting Started** | `en/getting-started.md` | Installation, API setup, first-skill tutorial |
+| **FAQ** | `en/faq.md`, `ja/faq.md` | First-timer setup, cost, safety, and scope questions |
 | **Skill Catalog** | `en/skill-catalog.md` | Full table of all skills with descriptions and API badges |
 | **Skill Guide (★)** | `en/skills/<name>.md` | Hand-written 10-section detailed guide |
 | **Skill Guide (auto)** | `en/skills/<name>.md` | Auto-generated from SKILL.md: overview, workflow, resources |
@@ -572,7 +583,10 @@ Current `nav_order` assignments for top-level en/ pages:
 | 4 | Workflows |
 | 5 | Skillsets |
 | 6 | Find Your Workflow |
-| 7 | Playbooks |
+| 7 | Glossary |
+| 8 | Your First Week |
+| 9 | Playbooks |
+| 10 | FAQ |
 
 `Playbooks` (`プレイブック`) is a `has_children` parent. Its child playbook pages
 use their own `nav_order` scale scoped to the parent (currently 10, 12, 14, 20 —
