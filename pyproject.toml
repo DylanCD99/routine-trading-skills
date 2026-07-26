@@ -114,6 +114,8 @@ testpaths = [
     "skills/us-stock-analysis/scripts/tests",
     "skills/cot-contrarian-detector/scripts/tests",
     "skills/news-reaction-failure-analyzer/scripts/tests",
+    "skills/contrarian-setup-gate/scripts/tests",
+    "skills/futures-position-sizer/scripts/tests",
     "scripts/tests",
 ]
 

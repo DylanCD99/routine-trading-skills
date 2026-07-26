@@ -42,9 +42,10 @@ their optimized `.set`.
 - The three folders under `MQL5\Experts`: *candidates*, *in-testing*, *finalists*.
 - **`common.symbols`** set in the config — the pairs Round 1 backtests (your
   Market Watch symbols).
-- Optional per-bot `.set` files (config `sets_dir`) for Round-3 parameter
-  optimization; without them Round 3 is skipped and the verdict comes from
-  Round 2.
+- Optional per-bot `.set` files (config `sets_dir`) for the Round-2 baseline and
+  Round-3 parameter optimization. Every input is fixed during optimization
+  except the one parameter currently being searched; without a `.set`, Round 3
+  is skipped and the verdict comes from Round 2.
 - **Close MetaTrader 5 before running** — the tester needs exclusive use of the
   data folder.
 - Python 3.9+ (standard library only). No paid API.
@@ -84,7 +85,9 @@ python3 skills/mt5-robot-tester/scripts/mt5_batch_tester.py \
   --config my_config.json --output-dir reports/mt5_pipeline --resume
 ```
 
-`--resume` skips completed bots and reuses finished rounds.
+`--resume` skips completed bots and reuses finished rounds only while the
+execution config, EA binary, and input `.set` fingerprints still match. A
+changed period, symbol list, binary, or `.set` restarts that bot safely.
 
 ### Optional — HTML control panel
 
@@ -98,13 +101,14 @@ python3 skills/mt5-robot-tester/scripts/dashboard.py \
 
 It serves `http://127.0.0.1:8765/` (opens automatically, localhost only). The
 page auto-refreshes every 3 s: folder contents, per-bot phase (R1/R2/R3/done),
-pass/fail verdicts, summary counts, and the live `run.log`.
+pass/fail verdicts, summary counts, and the live `run.log`. Start/stop requests
+are limited to the exact local origin and require the per-server CSRF token.
 
 ### Step 5 — Read the results
 
 - `leaderboard_<ts>.md` / `.json` — ranking with verdict and key metrics.
-- `references/learnings.md` — what the skill learned this loop (parameter impact,
-  symbol priors) and applies to future runs.
+- `learnings.json` / `learnings.md` — what the skill learned this loop
+  (parameter impact and symbol priors) under the configured output directory.
 - `mt5_reports/` and `mt5_ini/` — raw MT5 reports and configs per bot/round.
 
 ## Round details
@@ -122,8 +126,9 @@ Reported per bot; the hard finalist gate is Round 3.
 
 ### Round 3 sequential optimization
 For each of the 5–6 inputs after `MagicNumber` (learned order first), optimize
-that single parameter over `[V×0.5, V×1.5]` step `V×0.05` (`Optimization=1`),
-fix its best value, then continue. Run a final backtest with the optimized set.
+that single parameter over `[V×0.5, V×1.5]` step `V×0.05` (`Optimization=1`)
+while fixing every other `.set` input, fix its best value, then continue. Run a
+final backtest with the exact complete input set saved for a finalist.
 
 ### Finalist
 `evaluate_finalist`: improved on Round 2 **and** profit ≥4× deposit **and** worst
@@ -153,15 +158,24 @@ selection converge faster each loop. Deterministic — plain aggregate statistic
 - `scripts/mt5_common.py` — shared parsing helpers (EN/ES headers, numbers).
 - `references/mt5-cli-reference.md` — MT5 `[Tester]`/`[TesterInputs]` keys, enums,
   report formats and caveats.
-- `references/learnings.md` — auto-generated learning digest (created on first run).
 - `assets/pipeline_config.template.json` — config template with placeholders.
 
 ## Key Principles
 
 1. **Never commit personal paths** — folders/terminal come from config/ENV/args.
-2. **Absolute `Report=` paths** so reports don't vanish into the hashed data dir.
+2. **Relative `Report=` names** because build 6061 ignores absolute report paths;
+   collect completed reports from the terminal data directory.
 3. **Real ticks (`Model=4`)** need broker tick data; it is slow — expect long runs.
-4. **Resumable**: every round checkpoints; `--resume` never repeats finished work.
-5. **Learn each loop**: parameter/symbol statistics bias future runs toward wins.
-6. **Verify against your build**: report layout (esp. the deals table) and the
+4. **Resumable**: every round checkpoints; `--resume` reuses only fingerprint-
+   matching work and retries execution errors.
+5. **Fail closed**: incomplete, timed-out, stale, or unparsable reports never
+   reject, promote, or move a candidate. Every unique Round-1 symbol must finish.
+6. **Single MT5 owner**: an OS lock is held for the process lifetime for each
+   shared MT5 data folder. If child termination cannot be confirmed, the whole
+   run stops and writes a `.blocked` marker; verify the recorded PID/process tree
+   has exited before removing that marker manually.
+7. **Full-period metrics**: months without deals at the start, end, or across a
+   full year remain part of the configured test period.
+8. **Learn each loop**: parameter/symbol statistics bias future runs toward wins.
+9. **Verify against your build**: report layout (esp. the deals table) and the
    32 ms delay mapping can differ — see the reference's *(verificar)* notes.

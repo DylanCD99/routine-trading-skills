@@ -1,11 +1,16 @@
 """Tests for parse_mt5_optimization: parsing, Round-1 gate, best-param."""
+
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from parse_mt5_optimization import (  # noqa: E402
-    best_param_value, best_pass, count_positive_profit, gate_round1, parse_passes,
+    best_param_value,
+    best_pass,
+    count_positive_profit,
+    gate_round1,
+    parse_passes,
 )
 
 FIX = Path(__file__).resolve().parent / "fixtures" / "sample_opt.xml"

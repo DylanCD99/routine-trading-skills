@@ -90,6 +90,28 @@ skills:
   - composite_scores
   workflows:
   - swing-opportunity-daily
+- id: contrarian-setup-gate
+  display_name: Contrarian Setup Gate
+  category: trade-planning
+  status: beta
+  summary: Offline synthesis gate that combines COT crowding, news-reaction failure, and weekly
+    price-action confirmation into one actionable setup_status via a fail-closed precedence state
+    machine, implementing the decision center of Jason Shapiro's contrarian methodology.
+  timeframe: event-driven
+  difficulty: intermediate
+  integrations:
+  - id: local_calculation
+    type: calculation
+    requirement: not_required
+    note: Reads the three upstream contrarian-pipeline report JSONs; works offline
+  inputs:
+  - cot_crowding_report
+  - news_failure_verdict
+  - price_action_confirmation_report
+  outputs:
+  - contrarian_setup_gate_report
+  workflows:
+  - shapiro-contrarian
 - id: cot-contrarian-detector
   display_name: COT Contrarian Detector
   category: market-regime
@@ -107,6 +129,36 @@ skills:
   - cot_report_data
   outputs:
   - cot_crowding_report
+  workflows:
+  - shapiro-contrarian
+- id: crypto-regime-analyzer
+  display_name: Crypto Regime Analyzer
+  category: market-regime
+  status: beta
+  summary: Quantifies crypto market regime health (0-100 composite, 100 = risk-on) from six components using free keyless public data.
+  timeframe: daily
+  difficulty: intermediate
+  integrations:
+  - id: coingecko
+    type: market_data
+    requirement: required
+    note: Free public API, no key; universe, price history, BTC dominance
+  - id: binance_funding
+    type: market_data
+    requirement: recommended
+    note: Public futures endpoint for perp funding; component skipped if unreachable
+  - id: prices_json
+    type: local_file
+    requirement: optional
+    note: Offline snapshot path (--input-json); schema in references
+  inputs:
+  - coingecko_public_api
+  - funding_rates
+  - snapshot_json
+  outputs:
+  - crypto_regime_composite_score
+  - component_breakdown
+  - posture_recommendation
   workflows: []
 - id: data-quality-checker
   display_name: Data Quality Checker
@@ -149,7 +201,8 @@ skills:
   outputs:
   - pullback_candidates
   - yield_growth_metrics
-  workflows: []
+  workflows:
+  - kanchi-dividend-weekly
 - id: downtrend-duration-analyzer
   display_name: Downtrend Duration Analyzer
   category: market-regime
@@ -264,6 +317,25 @@ skills:
   - date_range
   outputs:
   - economic_events_report
+  workflows: []
+- id: fxmacrodata-calendar
+  display_name: FXMacroData Calendar
+  category: meta
+  status: beta
+  summary: Fetch official-source macro release-calendar events using FXMacroData for trade planning
+    and event-risk filters.
+  timeframe: event-driven
+  difficulty: beginner
+  integrations:
+  - id: fxmacrodata
+    type: market_data
+    requirement: optional
+    note: FXMacroData REST API; public USD calendar rows work without a key
+  inputs:
+  - currency
+  - market_tier_filter
+  outputs:
+  - macro_release_calendar
   workflows: []
 - id: edge-candidate-agent
   display_name: Edge Candidate Agent
@@ -461,6 +533,31 @@ skills:
   outputs:
   - ftd_signal_report
   workflows: []
+- id: futures-position-sizer
+  display_name: Futures Position Sizer
+  category: trade-planning
+  status: beta
+  summary: Calculate contract-based futures position sizes from a direction, entry, and stop-loss,
+    using a verified 23-market contract-spec table (multiplier, tick size, tick value), implementing
+    step 4 of Jason Shapiro's contrarian pipeline.
+  timeframe: event-driven
+  difficulty: intermediate
+  integrations:
+  - id: local_calculation
+    type: calculation
+    requirement: not_required
+    note: Pure calculation; consumes contrarian-setup-gate's READY_FOR_PLAN report or explicit
+      direction/entry/stop flags; works offline
+  inputs:
+  - entry_price
+  - stop_price
+  - account_size
+  - risk_pct
+  - contrarian_setup_gate_report
+  outputs:
+  - futures_position_size
+  workflows:
+  - shapiro-contrarian
 - id: ibd-distribution-day-monitor
   display_name: IBD Distribution Day Monitor
   category: market-regime
@@ -520,6 +617,7 @@ skills:
   - review_queue
   workflows:
   - core-portfolio-weekly
+  - kanchi-dividend-weekly
 - id: kanchi-dividend-sop
   display_name: Kanchi Dividend SOP
   category: core-portfolio
@@ -538,7 +636,8 @@ skills:
   outputs:
   - kanchi_candidates
   - stock_memo
-  workflows: []
+  workflows:
+  - kanchi-dividend-weekly
 - id: kanchi-dividend-us-tax-accounting
   display_name: Kanchi Dividend US Tax Accounting
   category: core-portfolio
@@ -559,6 +658,7 @@ skills:
   - account_location_advice
   workflows:
   - core-portfolio-weekly
+  - kanchi-dividend-weekly
 - id: macro-regime-detector
   display_name: Macro Regime Detector
   category: market-regime
@@ -657,6 +757,32 @@ skills:
   - market_top_composite_score
   workflows:
   - market-regime-daily
+- id: mt5-robot-tester
+  display_name: MT5 Robot Tester
+  category: strategy-research
+  status: beta
+  summary: Batch-test MetaTrader 5 Expert Advisors through a resumable three-round local
+    pipeline, rank results, and retain deterministic parameter and symbol learnings.
+  timeframe: research
+  difficulty: advanced
+  integrations:
+  - id: mt5_local_files
+    type: local_file
+    requirement: required
+    note: Local Windows MT5 terminal, EA and set files, and broker tick data; no API key
+  - id: local_calculation
+    type: calculation
+    requirement: not_required
+    note: Offline report parsing, gates, metrics, checkpoints, and learning aggregation
+  inputs:
+  - mt5_ea_binaries
+  - mt5_pipeline_config
+  - broker_tick_data
+  outputs:
+  - mt5_backtest_reports
+  - robot_leaderboard
+  - learning_store
+  workflows: []
 - id: news-reaction-failure-analyzer
   display_name: News Reaction Failure Analyzer
   category: market-regime
@@ -677,11 +803,12 @@ skills:
     note: Events curation (Claude searches news to build the events JSON; no FMP news endpoint exists
       for futures)
   inputs:
-  - cot_detector_report
+  - cot_crowding_report
   - curated_events_json
   outputs:
   - news_failure_verdict
-  workflows: []
+  workflows:
+  - shapiro-contrarian
 - id: options-strategy-advisor
   display_name: Options Strategy Advisor
   category: advanced-satellite
@@ -1178,6 +1305,7 @@ skills:
   - price_action_confirmation_report
   workflows:
   - swing-opportunity-daily
+  - shapiro-contrarian
 - id: theme-detector
   display_name: Theme Detector
   category: swing-opportunity
@@ -1266,6 +1394,7 @@ skills:
   inputs:
   - screener_report
   - trade_actions
+  - futures_position_size
   outputs:
   - thesis_record
   - journal_entry
@@ -1274,6 +1403,8 @@ skills:
   - swing-opportunity-daily
   - trade-memory-loop
   - monthly-performance-review
+  - shapiro-contrarian
+  - kanchi-dividend-weekly
 - id: trading-skills-navigator
   display_name: Trading Skills Navigator
   category: meta
@@ -1378,6 +1509,7 @@ skills:
   - high_yield_candidates
   workflows:
   - core-portfolio-weekly
+  - kanchi-dividend-weekly
 - id: vcp-screener
   display_name: VCP Screener
   category: swing-opportunity

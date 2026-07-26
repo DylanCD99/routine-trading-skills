@@ -224,6 +224,8 @@ The table below is **auto-generated** from `skills-index.yaml` by `scripts/gener
 | **Breakout Trade Planner** | ❌ Not used | ❌ Not used | ❌ Not used | Consumes VCP screener output; pure calculation + Alpaca order templates |
 | **CANSLIM Screener** | ✅ Required | ❌ Not used | ❌ Not used | US stock fundamentals via FMP |
 | **COT Contrarian Detector** | ✅ Required | ❌ Not used | ❌ Not used | CFTC COT data via FMP; requires Premium+ plan |
+| **Contrarian Setup Gate** | ❌ Not used | ❌ Not used | ❌ Not used | Reads the three upstream contrarian-pipeline report JSONs; works offline |
+| **Crypto Regime Analyzer** | ❌ Not used | ❌ Not used | ❌ Not used | Free public API, no key; universe, price history, BTC dominance; Public futures endpoint for perp funding; component skipped if unreachable; Offline snapshot path (--input-json); schema in references |
 | **Data Quality Checker** | ❌ Not used | ❌ Not used | ❌ Not used | Local markdown validation; works offline |
 | **Dividend Growth Pullback Screener** | ✅ Required | 🟡 Optional (Recommended) | ❌ Not used | Financial Modeling Prep API |
 | **Downtrend Duration Analyzer** | ❌ Not used | ❌ Not used | ❌ Not used | Duration analysis from market data; pure calculation |
@@ -241,12 +243,15 @@ The table below is **auto-generated** from `skills-index.yaml` by `scripts/gener
 | **Edge Strategy Reviewer** | ❌ Not used | ❌ Not used | ❌ Not used | Deterministic scoring on local YAML drafts |
 | **Exposure Coach** | ❌ Not used | ❌ Not used | ❌ Not used | Synthesizes signals from other skills; pure calculation |
 | **FTD Detector** | ✅ Required | ❌ Not used | ❌ Not used | Daily QQQ/SPY OHLCV via FMP |
+| **FXMacroData Calendar** | ❌ Not used | ❌ Not used | ❌ Not used | FXMacroData REST API; public USD calendar rows work without a key |
 | **Finviz Screener** | ❌ Not used | 🟡 Optional | ❌ Not used | FINVIZ Elite API |
+| **Futures Position Sizer** | ❌ Not used | ❌ Not used | ❌ Not used | Pure calculation; consumes contrarian-setup-gate's READY_FOR_PLAN report or explicit direction/entry/stop flags; works offline |
 | **IBD Distribution Day Monitor** | ✅ Required | ❌ Not used | ❌ Not used | Financial Modeling Prep API |
 | **Institutional Flow Tracker** | ✅ Required | ❌ Not used | ❌ Not used | Financial Modeling Prep API |
 | **Kanchi Dividend Review Monitor** | 🟡 Optional (Recommended) | ❌ Not used | ❌ Not used | Dividend / price monitoring via FMP |
 | **Kanchi Dividend SOP** | 🟡 Optional (Recommended) | ❌ Not used | ❌ Not used | US dividend stock data via FMP |
 | **Kanchi Dividend US Tax Accounting** | ❌ Not used | ❌ Not used | ❌ Not used | US tax workflow guidance; pure calculation |
+| **MT5 Robot Tester** | ❌ Not used | ❌ Not used | ❌ Not used | Local Windows MT5 terminal, EA and set files, and broker tick data; no API key; Offline report parsing, gates, metrics, checkpoints, and learning aggregation |
 | **Macro Regime Detector** | ❌ Not used | ❌ Not used | ❌ Not used | Cross-asset ratio data via yfinance or local CSV |
 | **Market Breadth Analyzer** | ❌ Not used | ❌ Not used | ❌ Not used | TraderMonty public CSV; no API key required |
 | **Market Environment Analysis** | ❌ Not used | ❌ Not used | ❌ Not used | Global market data via WebSearch / WebFetch; Optional chart image inputs for technical interpretation |
@@ -401,13 +406,13 @@ python3 value-dividend-screener/scripts/screen_dividend_stocks.py \
 **Dividend Growth Pullback Screener:** ⚠️ Requires FMP API key; FINVIZ Elite optional but recommended
 ```bash
 # Two-stage screening with RSI filter (RECOMMENDED)
-python3 dividend-growth-pullback-screener/scripts/screen_dividend_growth.py --use-finviz
+python3 dividend-growth-pullback-screener/scripts/screen_dividend_growth_rsi.py --use-finviz
 
 # FMP-only screening (limited to ~40 stocks due to API limits)
-python3 dividend-growth-pullback-screener/scripts/screen_dividend_growth.py --max-candidates 40
+python3 dividend-growth-pullback-screener/scripts/screen_dividend_growth_rsi.py --max-candidates 40
 
 # Custom RSI threshold and dividend growth requirements
-python3 dividend-growth-pullback-screener/scripts/screen_dividend_growth.py \
+python3 dividend-growth-pullback-screener/scripts/screen_dividend_growth_rsi.py \
   --use-finviz \
   --rsi-threshold 35 \
   --min-div-growth 15
@@ -592,6 +597,15 @@ python3 skills/trader-memory-core/scripts/trader_memory_cli.py store --state-dir
 # (close accepts ACTIVE or PARTIALLY_CLOSED)
 python3 skills/trader-memory-core/scripts/trader_memory_cli.py store --state-dir state/theses/ \
   close <id> --exit-reason target_hit --actual-price 165.00 --actual-date 2026-06-01
+
+# Futures thesis: attach a futures-position-sizer SIZED report (contracts/
+# multiplier/direction), then trim/close with --contracts-sold instead of
+# --shares-sold — close/terminate/trim/open-position dispatch automatically
+# on position.asset_type.
+python3 skills/trader-memory-core/scripts/trader_memory_cli.py store --state-dir state/theses/ \
+  attach-futures-position <id> --report reports/futures_position_es_2026-05-10.json
+python3 skills/trader-memory-core/scripts/trader_memory_cli.py store --state-dir state/theses/ \
+  trim <id> --contracts-sold 1 --price 4950.00 --date 2026-05-12
 
 # Query theses
 python3 skills/trader-memory-core/scripts/trader_memory_cli.py store \
@@ -786,6 +800,8 @@ These skills fetch future events via FMP API:
 | [`swing-opportunity-daily`](workflows/swing-opportunity-daily.yaml) | daily | vcp-screener, drawdown-circuit-breaker, technical-analyst, position-sizer, trader-memory-core, pre-trade-discipline-gate |
 | [`trade-memory-loop`](workflows/trade-memory-loop.yaml) | per closed trade | trader-memory-core, signal-postmortem |
 | [`monthly-performance-review`](workflows/monthly-performance-review.yaml) | monthly | trader-memory-core, signal-postmortem |
+| [`shapiro-contrarian`](workflows/shapiro-contrarian.yaml) | weekly | cot-contrarian-detector, news-reaction-failure-analyzer, technical-analyst, contrarian-setup-gate, futures-position-sizer, trader-memory-core |
+| [`kanchi-dividend-weekly`](workflows/kanchi-dividend-weekly.yaml) | weekly | kanchi-dividend-sop, trader-memory-core |
 
 ### Quickstart prose examples (NOT canonical)
 

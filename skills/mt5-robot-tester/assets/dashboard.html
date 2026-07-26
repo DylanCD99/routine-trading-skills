@@ -107,7 +107,11 @@
 
 <script>
 const $ = id => document.getElementById(id);
+const csrfToken = '__CSRF_TOKEN__';
 const fmt = v => (v===null||v===undefined) ? '—' : (typeof v==='number' ? v.toLocaleString('es-ES',{maximumFractionDigits:2}) : v);
+const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
+  '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+}[ch]));
 
 function phaseBadge(b){
   if(b.verdict==='finalist') return '<span class="badge b-finalist">FINALISTA</span>';
@@ -118,10 +122,10 @@ function phaseBadge(b){
 }
 function phaseLabel(b){
   const m={R1:'Ronda 1',R2:'Ronda 2',R3:'Ronda 3',done:'Terminado',pending:'—'};
-  return `<span class="ph">${m[b.phase]||b.phase}</span>`;
+  return `<span class="ph">${esc(m[b.phase]||b.phase)}</span>`;
 }
 function fillList(ul, names){
-  ul.innerHTML = names.length ? names.map(n=>`<li title="${n}">${n}</li>`).join('')
+  ul.innerHTML = names.length ? names.map(n=>`<li title="${esc(n)}">${esc(n)}</li>`).join('')
                               : '<li class="muted">(vacío)</li>';
 }
 
@@ -142,11 +146,11 @@ async function refresh(){
   fillList($('f-fin'),  s.folders.finalists);  $('f-fin-n').textContent  = s.folders.finalists.length;
 
   $('bots').innerHTML = s.bots.length ? s.bots.map(b=>`<tr>
-    <td>${b.name}</td><td>${phaseLabel(b)}</td><td>${phaseBadge(b)}</td>
-    <td>${b.best_symbol||'—'}</td>
-    <td class="num">${fmt(b.r2_profit)}</td><td class="num">${fmt(b.final_profit)}</td>
-    <td class="num">${fmt(b.final_dd_pct)}</td><td class="num">${fmt(b.lr)}</td>
-    <td class="muted">${b.reason||''}</td></tr>`).join('')
+    <td>${esc(b.name)}</td><td>${phaseLabel(b)}</td><td>${phaseBadge(b)}</td>
+    <td>${esc(b.best_symbol||'—')}</td>
+    <td class="num">${esc(fmt(b.r2_profit))}</td><td class="num">${esc(fmt(b.final_profit))}</td>
+    <td class="num">${esc(fmt(b.final_dd_pct))}</td><td class="num">${esc(fmt(b.lr))}</td>
+    <td class="muted">${esc(b.reason||'')}</td></tr>`).join('')
     : '<tr><td colspan="9" class="muted">Sin datos todavía.</td></tr>';
 
   $('log').textContent = (s.log_tail||[]).join('\n') || '—';
@@ -154,9 +158,9 @@ async function refresh(){
 }
 
 $('go').onclick = async ()=>{ $('go').disabled=true;
-  const r = await (await fetch('/api/start',{method:'POST'})).json();
+  const r = await (await fetch('/api/start',{method:'POST',headers:{'X-CSRF-Token':csrfToken}})).json();
   if(!r.ok) alert(r.message); refresh(); };
-$('stop').onclick = async ()=>{ await fetch('/api/stop',{method:'POST'}); refresh(); };
+$('stop').onclick = async ()=>{ await fetch('/api/stop',{method:'POST',headers:{'X-CSRF-Token':csrfToken}}); refresh(); };
 
 refresh(); setInterval(refresh, 3000);
 </script>
