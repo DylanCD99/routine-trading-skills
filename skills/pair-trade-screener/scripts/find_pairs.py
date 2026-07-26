@@ -226,15 +226,31 @@ def fetch_price_data_batch(symbols, api_key, lookback_days=730):
 # =============================================================================
 
 
+def _align_finite_prices(prices_a, prices_b, min_observations=2):
+    """Inner-align two price series and drop every non-finite observation pair."""
+    try:
+        aligned = pd.concat(
+            [pd.Series(prices_a, name="price_a"), pd.Series(prices_b, name="price_b")],
+            axis=1,
+            join="inner",
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("price series could not be aligned") from exc
+
+    aligned = aligned.apply(pd.to_numeric, errors="coerce")
+    finite = np.isfinite(aligned["price_a"].to_numpy()) & np.isfinite(aligned["price_b"].to_numpy())
+    aligned = aligned.loc[finite]
+    if len(aligned) < min_observations:
+        raise ValueError(f"at least {min_observations} paired finite observations are required")
+    return aligned["price_a"], aligned["price_b"]
+
+
 def calculate_correlation(prices_a, prices_b):
     """Calculate Pearson correlation coefficient"""
-    # Align dates
-    common_dates = prices_a.index.intersection(prices_b.index)
-    if len(common_dates) < 100:
+    try:
+        aligned_a, aligned_b = _align_finite_prices(prices_a, prices_b, min_observations=100)
+    except ValueError:
         return None
-
-    aligned_a = prices_a.loc[common_dates]
-    aligned_b = prices_b.loc[common_dates]
 
     correlation = aligned_a.corr(aligned_b)
     return correlation if np.isfinite(correlation) else None
@@ -242,18 +258,9 @@ def calculate_correlation(prices_a, prices_b):
 
 def calculate_beta(prices_a, prices_b):
     """Calculate hedge ratio (beta) using OLS regression"""
-    # Align dates
-    common_dates = prices_a.index.intersection(prices_b.index)
-    aligned_a = prices_a.loc[common_dates]
-    aligned_b = prices_b.loc[common_dates]
+    aligned_a, aligned_b = _align_finite_prices(prices_a, prices_b)
 
-    if (
-        len(common_dates) < 2
-        or aligned_a.nunique() < 2
-        or aligned_b.nunique() < 2
-        or not np.isfinite(aligned_a.to_numpy()).all()
-        or not np.isfinite(aligned_b.to_numpy()).all()
-    ):
+    if aligned_a.nunique() < 2 or aligned_b.nunique() < 2:
         raise ValueError("at least two finite observations and non-constant prices are required")
 
     # Linear regression: A = alpha + beta * B
@@ -266,16 +273,10 @@ def test_cointegration(prices_a, prices_b, beta):
     """Test for cointegration using Augmented Dickey-Fuller test"""
     _, adfuller = require_statsmodels()
 
-    # Align dates
-    common_dates = prices_a.index.intersection(prices_b.index)
-    aligned_a = prices_a.loc[common_dates]
-    aligned_b = prices_b.loc[common_dates]
-
-    # Calculate spread
-    spread = aligned_a - (beta * aligned_b)
-
     # ADF test
     try:
+        aligned_a, aligned_b = _align_finite_prices(prices_a, prices_b)
+        spread = aligned_a - (beta * aligned_b)
         result = adfuller(spread, maxlag=1, regression="c")
         adf_statistic = result[0]
         p_value = result[1]
@@ -349,7 +350,10 @@ def analyze_pair(symbol_a, symbol_b, prices_a, prices_b, min_correlation=0.70):
         return None
 
     # Step 2: Calculate beta (hedge ratio)
-    beta_result = calculate_beta(prices_a, prices_b)
+    try:
+        beta_result = calculate_beta(prices_a, prices_b)
+    except ValueError:
+        return None
     beta = beta_result["beta"]
 
     # Step 3: Test for cointegration
@@ -418,9 +422,12 @@ def screen_all_pairs(price_data, min_correlation=0.70):
         if pairs_analyzed % 10 == 0 or pairs_analyzed == total_pairs:
             print(f"  [{pairs_analyzed}/{total_pairs}] pairs analyzed...", end="\r", flush=True)
 
-        result = analyze_pair(
-            symbol_a, symbol_b, price_data[symbol_a], price_data[symbol_b], min_correlation
-        )
+        try:
+            result = analyze_pair(
+                symbol_a, symbol_b, price_data[symbol_a], price_data[symbol_b], min_correlation
+            )
+        except (TypeError, ValueError):
+            result = None
 
         if result and result["is_cointegrated"]:
             cointegrated_pairs.append(result)

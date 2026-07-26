@@ -89,6 +89,34 @@ def test_short_and_constant_series_are_not_actionable():
     assert analyze_spread.test_cointegration(pd.Series([1.0, 1.0])) is None
 
 
+def test_pair_statistics_drop_the_same_nonfinite_observations():
+    index = pd.date_range("2026-01-01", periods=120, freq="D")
+    prices_a = pd.Series(np.arange(120, dtype=float), index=index)
+    prices_b = pd.Series(np.arange(120, dtype=float) * 2, index=index)
+    prices_a.iloc[50] = np.nan
+    prices_b.iloc[75] = np.inf
+
+    correlation = find_pairs.calculate_correlation(prices_a, prices_b)
+    beta = find_pairs.calculate_beta(prices_a, prices_b)
+
+    assert correlation == pytest.approx(1.0)
+    assert beta["beta"] == pytest.approx(0.5)
+    assert np.isfinite(beta["intercept"])
+
+
+def test_screen_all_pairs_skips_malformed_pair_and_keeps_valid_pair():
+    prices_a, prices_b = _cointegrated_prices()
+    malformed = prices_a.copy()
+    malformed.iloc[20:] = np.nan
+
+    results = find_pairs.screen_all_pairs(
+        {"AAA": prices_a, "BBB": prices_b, "BAD": malformed},
+        min_correlation=0.70,
+    )
+
+    assert [result["pair"] for result in results] == ["AAA/BBB"]
+
+
 @pytest.mark.parametrize(("zscore", "expected"), ((None, None), (0.0, 0.0)))
 def test_analyze_pair_preserves_non_actionable_zscores(monkeypatch, zscore, expected):
     prices_a, prices_b = _cointegrated_prices()
