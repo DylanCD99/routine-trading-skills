@@ -13,9 +13,10 @@ back into the pipeline:
     surfaced in the report;
   * per-bot verdict/reason → institutional memory across loops.
 
-State lives in ``learnings.json``; a human-readable digest is mirrored to
-``references/learnings.md``.
+State lives in ``learnings.json``; a human-readable ``learnings.md`` digest is
+written beside it in the configured output directory.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -23,7 +24,6 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 SCHEMA_VERSION = "1.0"
 
@@ -33,9 +33,9 @@ def _empty() -> dict:
         "schema_version": SCHEMA_VERSION,
         "updated": None,
         "runs": 0,
-        "symbols": {},      # symbol -> {best_pair_count, profit_sum, profit_count}
-        "parameters": {},   # name   -> {opt_count, improvement_sum, improved_count}
-        "bots": {},         # bot    -> {verdict, reason, last_seen}
+        "symbols": {},  # symbol -> {best_pair_count, profit_sum, profit_count}
+        "parameters": {},  # name   -> {opt_count, improvement_sum, improved_count}
+        "bots": {},  # bot    -> {verdict, reason, last_seen}
     }
 
 
@@ -87,9 +87,10 @@ class Learnings:
     def bump_run(self) -> None:
         self.data["runs"] = self.data.get("runs", 0) + 1
 
-    def record_best_pair(self, symbol: str, profit: Optional[float]) -> None:
+    def record_best_pair(self, symbol: str, profit: float | None) -> None:
         s = self.data["symbols"].setdefault(
-            symbol, {"best_pair_count": 0, "profit_sum": 0.0, "profit_count": 0})
+            symbol, {"best_pair_count": 0, "profit_sum": 0.0, "profit_count": 0}
+        )
         s["best_pair_count"] += 1
         if profit is not None:
             s["profit_sum"] += profit
@@ -97,7 +98,8 @@ class Learnings:
 
     def record_param_optimization(self, name: str, improvement: float) -> None:
         p = self.data["parameters"].setdefault(
-            name, {"opt_count": 0, "improvement_sum": 0.0, "improved_count": 0})
+            name, {"opt_count": 0, "improvement_sum": 0.0, "improved_count": 0}
+        )
         p["opt_count"] += 1
         p["improvement_sum"] += improvement
         if improvement > 0:
@@ -112,11 +114,10 @@ class Learnings:
 
     # --- persistence -------------------------------------------------------
 
-    def save(self, markdown_path: Optional[str | Path] = None) -> None:
+    def save(self, markdown_path: str | Path | None = None) -> None:
         self.data["updated"] = dt.datetime.now().isoformat(timespec="seconds")
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._atomic_write(self.path, json.dumps(self.data, indent=2,
-                                                 ensure_ascii=False))
+        self._atomic_write(self.path, json.dumps(self.data, indent=2, ensure_ascii=False))
         if markdown_path:
             self._atomic_write(Path(markdown_path), self.render_markdown())
 
@@ -149,13 +150,13 @@ class Learnings:
             "| Parámetro | Optimizado (veces) | Mejoró (veces) | Δ medio |",
             "|-----------|-------------------:|---------------:|--------:|",
         ]
-        params = sorted(d["parameters"].items(),
-                        key=lambda kv: -(kv[1]["improvement_sum"]
-                                         / max(kv[1]["opt_count"], 1)))
+        params = sorted(
+            d["parameters"].items(),
+            key=lambda kv: -(kv[1]["improvement_sum"] / max(kv[1]["opt_count"], 1)),
+        )
         for name, p in params:
             avg = p["improvement_sum"] / max(p["opt_count"], 1)
-            lines.append(f"| {name} | {p['opt_count']} | {p['improved_count']} "
-                         f"| {avg:,.2f} |")
+            lines.append(f"| {name} | {p['opt_count']} | {p['improved_count']} | {avg:,.2f} |")
         if not params:
             lines.append("| _(sin datos aún)_ | | | |")
 
@@ -166,11 +167,9 @@ class Learnings:
             "| Símbolo | Mejor par (veces) | Beneficio medio |",
             "|---------|------------------:|----------------:|",
         ]
-        syms = sorted(d["symbols"].items(),
-                      key=lambda kv: -kv[1].get("best_pair_count", 0))
+        syms = sorted(d["symbols"].items(), key=lambda kv: -kv[1].get("best_pair_count", 0))
         for sym, s in syms:
-            avg = (s["profit_sum"] / s["profit_count"]
-                   if s.get("profit_count") else None)
+            avg = s["profit_sum"] / s["profit_count"] if s.get("profit_count") else None
             avg_s = f"{avg:,.2f}" if avg is not None else "—"
             lines.append(f"| {sym} | {s.get('best_pair_count', 0)} | {avg_s} |")
         if not syms:
@@ -184,8 +183,10 @@ class Learnings:
             "|-----|-----------|--------|-------|",
         ]
         for bot, b in sorted(d["bots"].items()):
-            lines.append(f"| {bot} | {b.get('verdict','')} | {b.get('reason','')} "
-                         f"| {b.get('last_seen','')} |")
+            lines.append(
+                f"| {bot} | {b.get('verdict', '')} | {b.get('reason', '')} "
+                f"| {b.get('last_seen', '')} |"
+            )
         if not d["bots"]:
             lines.append("| _(sin datos aún)_ | | | |")
         lines.append("")

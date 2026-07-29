@@ -3,7 +3,7 @@ layout: default
 title: "Mt5 Robot Tester"
 grand_parent: English
 parent: Skill Guides
-nav_order: 39
+nav_order: 43
 lang_peer: /ja/skills/mt5-robot-tester/
 permalink: /en/skills/mt5-robot-tester/
 generated: true
@@ -17,6 +17,7 @@ Select the best MetaTrader 5 trading robots (Expert Advisors) that have not been
 
 <span class="badge badge-free">No API</span>
 
+[Download Skill Package (.skill)](https://github.com/tradermonty/claude-trading-skills/raw/main/skill-packages/mt5-robot-tester.skill){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [View Source on GitHub](https://github.com/tradermonty/claude-trading-skills/tree/main/skills/mt5-robot-tester){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 <details open markdown="block">
@@ -36,9 +37,10 @@ pipeline**, moving each bot between folders as it advances, and **learning acros
 runs** to improve selection each loop. The whole run is checkpointed and
 resumable.
 
-- **Round 1 — screening (all symbols):** optimize the EA over every Market-Watch
-  symbol (`Optimization=3`). Gate: **≥5 symbols profitable AND best symbol ≥3×
-  deposit**.
+- **Round 1 — screening (all pairs):** backtest the EA on each symbol in the
+  configured `common.symbols` list (one `Optimization=0` backtest per symbol —
+  MT5 build 6061 leaves the `Optimization=3` XML empty, so per-symbol backtests
+  are used). Gate: **≥5 symbols profitable AND best symbol ≥3× deposit**.
 - **Round 2 — best-pair backtest:** single backtest on the best symbol; analyze
   net profit %, worst drawdown %, % positive months, all-years-positive, LR
   Correlation, months-to-new-high.
@@ -66,7 +68,14 @@ their optimized `.set`.
 - **Windows + MetaTrader 5** installed (the tester runs `terminal64.exe`).
 - Broker **tick data** downloaded (default modeling is real ticks, `Model=4`).
 - The three folders under `MQL5\Experts`: *candidates*, *in-testing*, *finalists*.
-- Symbols to test present in the **Market Watch** (`Optimization=3` iterates them).
+- **`common.symbols`** set in the config — the pairs Round 1 backtests (your
+  Market Watch symbols).
+- Optional per-bot `.set` files (config `sets_dir`) for the Round-2 baseline and
+  Round-3 parameter optimization. Every input is fixed during optimization
+  except the one parameter currently being searched; without a `.set`, Round 3
+  is skipped and the verdict comes from Round 2.
+- **Close MetaTrader 5 before running** — the tester needs exclusive use of the
+  data folder.
 - Python 3.9+ (standard library only). No paid API.
 
 ---
@@ -115,13 +124,30 @@ python3 skills/mt5-robot-tester/scripts/mt5_batch_tester.py \
   --config my_config.json --output-dir reports/mt5_pipeline --resume
 ```
 
-`--resume` skips completed bots and reuses finished rounds.
+`--resume` skips completed bots and reuses finished rounds only while the
+execution config, EA binary, and input `.set` fingerprints still match. A
+changed period, symbol list, binary, or `.set` restarts that bot safely.
+
+### Optional — HTML control panel
+
+Launch a local dashboard to see the bots in each folder, each bot's phase and
+verdict, and a **Launch** button — no CLI needed after starting it:
+
+```bash
+python3 skills/mt5-robot-tester/scripts/dashboard.py \
+  --config my_config.json --output-dir reports/mt5_pipeline
+```
+
+It serves `http://127.0.0.1:8765/` (opens automatically, localhost only). The
+page auto-refreshes every 3 s: folder contents, per-bot phase (R1/R2/R3/done),
+pass/fail verdicts, summary counts, and the live `run.log`. Start/stop requests
+are limited to the exact local origin and require the per-server CSRF token.
 
 ### Step 5 — Read the results
 
 - `leaderboard_<ts>.md` / `.json` — ranking with verdict and key metrics.
-- `references/learnings.md` — what the skill learned this loop (parameter impact,
-  symbol priors) and applies to future runs.
+- `learnings.json` / `learnings.md` — what the skill learned this loop
+  (parameter impact and symbol priors) under the configured output directory.
 - `mt5_reports/` and `mt5_ini/` — raw MT5 reports and configs per bot/round.
 
 ---
@@ -134,6 +160,7 @@ python3 skills/mt5-robot-tester/scripts/mt5_batch_tester.py \
 
 **Scripts:**
 
+- `skills/mt5-robot-tester/scripts/dashboard.py`
 - `skills/mt5-robot-tester/scripts/mt5_batch_tester.py`
 - `skills/mt5-robot-tester/scripts/mt5_common.py`
 - `skills/mt5-robot-tester/scripts/mt5_learnings.py`

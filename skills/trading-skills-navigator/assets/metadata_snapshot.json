@@ -66,6 +66,22 @@
       "timeframe": "weekly"
     },
     {
+      "category": "trade-planning",
+      "difficulty": "intermediate",
+      "display_name": "Contrarian Setup Gate",
+      "id": "contrarian-setup-gate",
+      "integrations": [
+        {
+          "id": "local_calculation",
+          "requirement": "not_required",
+          "type": "calculation"
+        }
+      ],
+      "status": "beta",
+      "summary": "Offline synthesis gate that combines COT crowding, news-reaction failure, and weekly price-action confirmation into one actionable setup_status via a fail-closed precedence state machine, implementing the decision center of Jason Shapiro's contrarian methodology.",
+      "timeframe": "event-driven"
+    },
+    {
       "category": "market-regime",
       "difficulty": "intermediate",
       "display_name": "COT Contrarian Detector",
@@ -80,6 +96,32 @@
       "status": "production",
       "summary": "Detects crowded speculative (large-speculator) positioning in CFTC futures markets using Commitment of Traders data, implementing step 1 of Jason Shapiro's contrarian methodology.",
       "timeframe": "weekly"
+    },
+    {
+      "category": "market-regime",
+      "difficulty": "intermediate",
+      "display_name": "Crypto Regime Analyzer",
+      "id": "crypto-regime-analyzer",
+      "integrations": [
+        {
+          "id": "coingecko",
+          "requirement": "required",
+          "type": "market_data"
+        },
+        {
+          "id": "binance_funding",
+          "requirement": "recommended",
+          "type": "market_data"
+        },
+        {
+          "id": "prices_json",
+          "requirement": "optional",
+          "type": "local_file"
+        }
+      ],
+      "status": "beta",
+      "summary": "Quantifies crypto market regime health (0-100 composite, 100 = risk-on) from six components using free keyless public data.",
+      "timeframe": "daily"
     },
     {
       "category": "meta",
@@ -375,6 +417,38 @@
       "timeframe": "daily"
     },
     {
+      "category": "trade-planning",
+      "difficulty": "intermediate",
+      "display_name": "Futures Position Sizer",
+      "id": "futures-position-sizer",
+      "integrations": [
+        {
+          "id": "local_calculation",
+          "requirement": "not_required",
+          "type": "calculation"
+        }
+      ],
+      "status": "beta",
+      "summary": "Calculate contract-based futures position sizes from a direction, entry, and stop-loss, using a verified 23-market contract-spec table (multiplier, tick size, tick value), implementing step 4 of Jason Shapiro's contrarian pipeline.",
+      "timeframe": "event-driven"
+    },
+    {
+      "category": "meta",
+      "difficulty": "beginner",
+      "display_name": "FXMacroData Calendar",
+      "id": "fxmacrodata-calendar",
+      "integrations": [
+        {
+          "id": "fxmacrodata",
+          "requirement": "optional",
+          "type": "market_data"
+        }
+      ],
+      "status": "beta",
+      "summary": "Fetch official-source macro release-calendar events using FXMacroData for trade planning and event-risk filters.",
+      "timeframe": "event-driven"
+    },
+    {
       "category": "market-regime",
       "difficulty": "intermediate",
       "display_name": "IBD Distribution Day Monitor",
@@ -538,6 +612,27 @@
       "status": "production",
       "summary": "Detects market top probability using O'Neil Distribution Days, Minervini Leading Stock Deterioration, and Monty Defensive Sector Rotation.",
       "timeframe": "daily"
+    },
+    {
+      "category": "strategy-research",
+      "difficulty": "advanced",
+      "display_name": "MT5 Robot Tester",
+      "id": "mt5-robot-tester",
+      "integrations": [
+        {
+          "id": "mt5_local_files",
+          "requirement": "required",
+          "type": "local_file"
+        },
+        {
+          "id": "local_calculation",
+          "requirement": "not_required",
+          "type": "calculation"
+        }
+      ],
+      "status": "beta",
+      "summary": "Batch-test MetaTrader 5 Expert Advisors through a resumable three-round local pipeline, rank results, and retain deterministic parameter and symbol learnings.",
+      "timeframe": "research"
     },
     {
       "category": "market-regime",
@@ -1304,6 +1399,31 @@
       ]
     },
     {
+      "api_profile": "mixed",
+      "cadence": "weekly",
+      "difficulty": "intermediate",
+      "display_name": "Kanchi Dividend Weekly",
+      "estimated_minutes": 60,
+      "id": "kanchi-dividend-weekly",
+      "optional_skills": [
+        "value-dividend-screener",
+        "dividend-growth-pullback-screener",
+        "kanchi-dividend-us-tax-accounting",
+        "kanchi-dividend-review-monitor"
+      ],
+      "prerequisite_workflows": [
+        "core-portfolio-weekly"
+      ],
+      "required_skills": [
+        "kanchi-dividend-sop",
+        "trader-memory-core"
+      ],
+      "target_users": [
+        "long-term-investor",
+        "dividend-investor"
+      ]
+    },
+    {
       "api_profile": "no-api-basic",
       "cadence": "daily",
       "difficulty": "beginner",
@@ -1376,6 +1496,27 @@
         "part-time-swing-trader",
         "growth-investor",
         "macro-discretionary-trader"
+      ]
+    },
+    {
+      "api_profile": "fmp-required",
+      "cadence": "weekly",
+      "difficulty": "advanced",
+      "display_name": "Shapiro COT Contrarian",
+      "estimated_minutes": 60,
+      "id": "shapiro-contrarian",
+      "optional_skills": [],
+      "prerequisite_workflows": [],
+      "required_skills": [
+        "cot-contrarian-detector",
+        "news-reaction-failure-analyzer",
+        "technical-analyst",
+        "contrarian-setup-gate",
+        "futures-position-sizer",
+        "trader-memory-core"
+      ],
+      "target_users": [
+        "futures-contrarian-trader"
       ]
     },
     {

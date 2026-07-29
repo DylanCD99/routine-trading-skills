@@ -33,7 +33,7 @@ terminal64.exe /config:C:\ruta\al\tester.ini
 | `Leverage` | `100` | Apalancamiento 1:N. |
 | `Optimization` | `0/1/2/3` | Modo de optimización (ver abajo). |
 | `OptimizationCriterion` | `0..7` | Criterio (ver abajo). |
-| `Report` | ruta **absoluta sin extensión** | Evita que el report caiga en la carpeta de datos con hash. |
+| `Report` | nombre **relativo sin extensión** | Build 6061 escribe el report en la carpeta de datos; el orquestador lo recoge al finalizar. |
 | `ReplaceReport` | `1` | Sobrescribe reruns. |
 | `ShutdownTerminal` | `1` | Cierra el terminal al acabar (imprescindible para batch). |
 | `Visual` | `0` | Sin modo visual. |
@@ -53,7 +53,7 @@ terminal64.exe /config:C:\ruta\al\tester.ini
 | 0 | Deshabilitado (backtest simple) |
 | 1 | Algoritmo lento (completo) |
 | 2 | Genético rápido |
-| **3** | **Todos los símbolos del Market Watch** ← Ronda 1 |
+| **3** | Todos los símbolos del Market Watch; no se usa en Ronda 1 porque build 6061 deja el XML vacío |
 
 ### `OptimizationCriterion`
 | Valor | Criterio |

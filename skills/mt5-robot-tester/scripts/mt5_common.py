@@ -13,12 +13,12 @@ Contains:
   * A minimal HTML ``<table>`` row extractor and a SpreadsheetML (Excel XML) row
     extractor, both returning ``list[list[str]]``.
 """
+
 from __future__ import annotations
 
 import re
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Optional
 from xml.etree import ElementTree as ET
 
 # Encodings MT5 has been observed to write reports in, tried in order.
@@ -43,7 +43,7 @@ def read_text(path: str | Path) -> str:
     if raw[:3] == b"\xef\xbb\xbf":
         return raw.decode("utf-8-sig")
     sample = raw[:512]
-    if sample.count(0) > len(sample) // 4:      # lots of NULs -> UTF-16 no BOM
+    if sample.count(0) > len(sample) // 4:  # lots of NULs -> UTF-16 no BOM
         for enc in ("utf-16-le", "utf-16-be"):
             try:
                 return raw.decode(enc)
@@ -57,7 +57,7 @@ def read_text(path: str | Path) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def to_float(token: Optional[str]) -> Optional[float]:
+def to_float(token: str | None) -> float | None:
     """Convert an MT5-formatted number to float, or ``None`` if not numeric.
 
     MT5 uses a space (or NBSP) as the thousands separator and ``.`` as the
@@ -74,9 +74,9 @@ def to_float(token: Optional[str]) -> Optional[float]:
     if not t or t in {"-", "--"}:
         return None
     if "," in t and "." not in t:
-        t = t.replace(",", ".")          # comma decimal locale
+        t = t.replace(",", ".")  # comma decimal locale
     else:
-        t = t.replace(",", "")           # comma was a thousands separator
+        t = t.replace(",", "")  # comma was a thousands separator
     # Drop any stray trailing currency letters (e.g. "1234USD").
     m = re.match(r"[-+]?\d*\.?\d+", t)
     if not m:
@@ -95,28 +95,36 @@ _HEADER_ALIASES: dict[str, set[str]] = {
     "result": {"result", "resultado"},
     "profit": {"profit", "beneficio", "net profit", "beneficio neto"},
     "symbol": {"symbol", "símbolo", "simbolo"},
-    "trades": {"trades", "total trades", "total de operaciones",
-               "operaciones", "total de operaciones ejecutadas"},
-    "profit_factor": {"profit factor", "factor de beneficio",
-                      "factor de rentabilidad"},
+    "trades": {
+        "trades",
+        "total trades",
+        "total de operaciones",
+        "operaciones",
+        "total de operaciones ejecutadas",
+    },
+    "profit_factor": {"profit factor", "factor de beneficio", "factor de rentabilidad"},
     "expected_payoff": {"expected payoff", "beneficio esperado"},
-    "recovery_factor": {"recovery factor", "factor de recuperación",
-                        "factor de recuperacion"},
+    "recovery_factor": {"recovery factor", "factor de recuperación", "factor de recuperacion"},
     "sharpe": {"sharpe ratio", "ratio de sharpe"},
-    "drawdown_pct": {"equity dd %", "equity drawdown %", "drawdown",
-                     "reducción %", "reduccion %", "reducción", "reduccion"},
+    "drawdown_pct": {
+        "equity dd %",
+        "equity drawdown %",
+        "drawdown",
+        "reducción %",
+        "reduccion %",
+        "reducción",
+        "reduccion",
+    },
 }
 
 # Build reverse lookup once.
-_CANON_BY_ALIAS = {
-    alias: canon for canon, aliases in _HEADER_ALIASES.items() for alias in aliases
-}
+_CANON_BY_ALIAS = {alias: canon for canon, aliases in _HEADER_ALIASES.items() for alias in aliases}
 
 # Headers that are standard optimization metrics; anything else is an EA input.
 KNOWN_METRIC_KEYS = set(_HEADER_ALIASES.keys())
 
 
-def canonical_header(header: str) -> Optional[str]:
+def canonical_header(header: str) -> str | None:
     """Map a raw report header to a canonical metric key, or None if it is an
     EA input parameter column."""
     return _CANON_BY_ALIAS.get(header.strip().lower())
@@ -124,14 +132,15 @@ def canonical_header(header: str) -> Optional[str]:
 
 # --- table extraction -----------------------------------------------------
 
+
 class _TableRows(HTMLParser):
     """Collect rows of ``<table>`` cells as lists of plain-text strings."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.rows: list[list[str]] = []
-        self._row: Optional[list[str]] = None
-        self._cell: Optional[list[str]] = None
+        self._row: list[str] | None = None
+        self._cell: list[str] | None = None
 
     def handle_starttag(self, tag, attrs):
         if tag == "tr":
@@ -170,7 +179,6 @@ def xml_spreadsheet_rows(text: str) -> list[list[str]]:
     """
     # ElementTree needs the declaration stripped of a BOM; read_text handled it.
     root = ET.fromstring(text)
-    ns = {"ss": _SS_NS}
     rows: list[list[str]] = []
     for row in root.iter(f"{{{_SS_NS}}}Row"):
         cells: list[str] = []

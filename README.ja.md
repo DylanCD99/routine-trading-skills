@@ -43,12 +43,14 @@ English README is available at [`README.md`](README.md).
 | 目的 | ワークフロー | 主要スキル | API プロファイル |
 | --- | --- | --- | --- |
 | 毎朝15分で相場を確認したい | [`market-regime-daily`](workflows/market-regime-daily.yaml) | market-breadth-analyzer, uptrend-analyzer, exposure-coach | API なし可 |
-| 長期ポートフォリオを週次で見直したい | [`core-portfolio-weekly`](workflows/core-portfolio-weekly.yaml) | portfolio-manager, kanchi-dividend-review-monitor, trader-memory-core | Alpaca 必須。手動 CSV は劣後フォールバック |
-| 相場環境が許すときだけスイング候補を探す | [`swing-opportunity-daily`](workflows/swing-opportunity-daily.yaml) | vcp-screener, drawdown-circuit-breaker, technical-analyst, position-sizer, trader-memory-core, pre-trade-discipline-gate | FMP 必須。リスク/規律ゲートはローカル state |
+| 長期ポートフォリオを週次で見直したい | [`core-portfolio-weekly`](workflows/core-portfolio-weekly.yaml)（[実行例](examples/workflows/core-portfolio-weekly/sample-run/)） | portfolio-manager, kanchi-dividend-review-monitor, trader-memory-core | Alpaca 必須。手動 CSV は劣後フォールバック |
+| 相場環境が許すときだけスイング候補を探す | [`swing-opportunity-daily`](workflows/swing-opportunity-daily.yaml)（[実行例](examples/workflows/swing-opportunity-daily/sample-run/)） | vcp-screener, drawdown-circuit-breaker, technical-analyst, position-sizer, trader-memory-core, pre-trade-discipline-gate | FMP 必須。リスク/規律ゲートはローカル state |
 | 約定後にトレードを記録して学ぶ | [`trade-memory-loop`](workflows/trade-memory-loop.yaml) | trader-memory-core, signal-postmortem | API なし可 |
-| 月次でパフォーマンスとルールを見直す | [`monthly-performance-review`](workflows/monthly-performance-review.yaml) | trader-memory-core, signal-postmortem, backtest-expert | API なし可 |
+| 月次でパフォーマンスとルールを見直す | [`monthly-performance-review`](workflows/monthly-performance-review.yaml)（[実行例](examples/workflows/monthly-performance-review/sample-run/)） | trader-memory-core, signal-postmortem, backtest-expert | API なし可 |
 
 manifest の読み方や手動実行手順は [`workflows/README.md`](workflows/README.md) を参照してください。「自分の状況にどのワークフローが合うか」を 1 ページで知りたい場合は [ワークフローの選び方](docs/ja/find-your-workflow.md)（[English](docs/en/find-your-workflow.md)）を参照してください。
+
+初めて使う場合は、[最初の1週間](docs/ja/your-first-week.md)（[English](docs/en/your-first-week.md)）で、インストール、有料データAPI不要の相場確認、最初のジャーナル登録、最初の週次レビューまで順に進めてください。
 
 ### 実際に必要な費用
 
@@ -133,6 +135,7 @@ FMP / FINVIZ / Alpaca の有料サブスクをまだ持っていない場合は�
 |---|---|---|---|
 | **Breadth Chart Analyst** (`breadth-chart-analyst`) | This skill should be used when analyzing market breadth charts, specifically the S&P 500 Breadth Index (200-Day MA based) and the US Stock Market Uptrend Stock Ratio charts. | `chart_image` **required** | production |
 | **COT Contrarian Detector** (`cot-contrarian-detector`) | Detects crowded speculative (large-speculator) positioning in CFTC futures markets using Commitment of Traders data, implementing step 1 of Jason Shapiro's contrarian methodology. | `fmp` **required** | production |
+| **Crypto Regime Analyzer** (`crypto-regime-analyzer`) | Quantifies crypto market regime health (0-100 composite, 100 = risk-on) from six components using free keyless public data. | `coingecko` **required**, `binance_funding` _recommended_, `prices_json` optional | beta |
 | **Downtrend Duration Analyzer** (`downtrend-duration-analyzer`) | Analyze historical downtrend durations and generate interactive HTML histograms showing typical correction lengths by sector and market cap. | `local_calculation` — | production |
 | **Exposure Coach** (`exposure-coach`) | Generate a one-page Market Posture summary with net exposure ceiling, growth-vs-value bias, participation breadth, and new-entry-allowed vs cash-priority recommendation by integrating signals from breadth, regime, and flow analysis skills. | `local_calculation` — | production |
 | **FTD Detector** (`ftd-detector`) | Detects Follow-Through Day (FTD) signals for market bottom confirmation using William O'Neil's methodology. | `fmp` **required** | production |
@@ -174,7 +177,9 @@ FMP / FINVIZ / Alpaca の有料サブスクをまだ持っていない場合は�
 
 | スキル | サマリ | 依存 | ステータス |
 |---|---|---|---|
+| **Contrarian Setup Gate** (`contrarian-setup-gate`) | Offline synthesis gate that combines COT crowding, news-reaction failure, and weekly price-action confirmation into one actionable setup_status via a fail-closed precedence state machine, implementing the decision center of Jason Shapiro's contrarian methodology. | `local_calculation` — | beta |
 | **Drawdown Circuit Breaker** (`drawdown-circuit-breaker`) | Account-level circuit breaker that reads trader-memory-core state and decides whether new trade risk is allowed today using daily loss limits, losing-streak cooldowns, and weekly/monthly drawdown halts. | `local_calculation` — | beta |
+| **Futures Position Sizer** (`futures-position-sizer`) | Calculate contract-based futures position sizes from a direction, entry, and stop-loss, using a verified 23-market contract-spec table (multiplier, tick size, tick value), implementing step 4 of Jason Shapiro's contrarian pipeline. | `local_calculation` — | beta |
 | **Position Sizer** (`position-sizer`) | Calculate risk-based position sizes for long stock trades. | `local_calculation` — | production |
 | **Pre-Trade Discipline Gate** (`pre-trade-discipline-gate`) | Offline manual-execution checklist gate that blocks planless, oversized, revenge-risk, market-regime-blocked, or circuit-breaker-blocked entries and journals the result. | `local_calculation` — | beta |
 | **Technical Analyst** (`technical-analyst`) | This skill should be used when analyzing weekly price charts for stocks, stock indices, cryptocurrencies, or forex pairs. | `chart_image` **required**, `fmp` optional | production |
@@ -203,6 +208,7 @@ FMP / FINVIZ / Alpaca の有料サブスクをまだ持っていない場合は�
 | **Edge Signal Aggregator** (`edge-signal-aggregator`) | Aggregate and rank signals from multiple edge-finding skills (edge-candidate-agent, theme-detector, sector-analyst, institutional-flow-tracker) into a prioritized conviction dashboard with weighted scoring, deduplication, and contradicti... | `local_calculation` — | production |
 | **Edge Strategy Designer** (`edge-strategy-designer`) | Convert abstract edge concepts into strategy draft variants and optional exportable ticket YAMLs for edge-candidate-agent export/validation. | `local_calculation` — | production |
 | **Edge Strategy Reviewer** (`edge-strategy-reviewer`) | Critically review strategy drafts from edge-strategy-designer for edge plausibility, overfitting risk, sample size adequacy, and execution realism. | `local_calculation` — | production |
+| **MT5 Robot Tester** (`mt5-robot-tester`) | Batch-test MetaTrader 5 Expert Advisors through a resumable three-round local pipeline, rank results, and retain deterministic parameter and symbol learnings. | `mt5_local_files` **required**, `local_calculation` — | beta |
 | **Scenario Analyzer** (`scenario-analyzer`) | Analyze 18-month scenarios from news headlines via scenario-analyst agent with strategy-reviewer second opinion; outputs primary/secondary/tertiary impact analysis and stock picks. | `websearch` **required** | production |
 | **Stanley Druckenmiller Investment** (`stanley-druckenmiller-investment`) | Druckenmiller Strategy Synthesizer - Integrates 8 upstream skill outputs (Market Breadth, Uptrend Analysis, Market Top, Macro Regime, FTD Detector, VCP Screener, Theme Detector, CANSLIM Screener) into a unified conviction score (0-100),... | `local_calculation` — | production |
 | **Stockbee 20% Study** (`stockbee-20pct-study`) | Build a daily Stockbee-style +20%/-20% mover event study, classify catalysts and setup context, update forward outcomes, and export evidence-backed edge hints without treating movers as buy/sell signals. | `fmp` **required**, `prices_json` optional, `news_events_json` optional, `websearch` optional, `local_calculation` — | beta |
@@ -228,6 +234,7 @@ FMP / FINVIZ / Alpaca の有料サブスクをまだ持っていない場合は�
 | **Dual Axis Skill Reviewer** (`dual-axis-skill-reviewer`) | Review skills in any project using a dual-axis method: (1) deterministic code-based checks (structure, scripts, tests, execution safety) and (2) LLM deep review findings. | `local_calculation` — | production |
 | **Earnings Calendar** (`earnings-calendar`) | This skill retrieves upcoming earnings announcements for US stocks using the Financial Modeling Prep (FMP) API. | `fmp` **required** | production |
 | **Economic Calendar Fetcher** (`economic-calendar-fetcher`) | Fetch upcoming economic events and data releases using FMP API. | `fmp` **required** | production |
+| **FXMacroData Calendar** (`fxmacrodata-calendar`) | Fetch official-source macro release-calendar events using FXMacroData for trade planning and event-risk filters. | `fxmacrodata` optional | beta |
 | **Skill Designer** (`skill-designer`) | Design new Claude skills from structured idea specifications. | `local_calculation` — | production |
 | **Skill Idea Miner** (`skill-idea-miner`) | Mine Claude Code session logs for skill idea candidates. | `local_calculation` — | production |
 | **Skill Integration Tester** (`skill-integration-tester`) | Validate multi-skill workflows defined in CLAUDE.md by checking skill existence, inter-skill data contracts (JSON schema compatibility), file naming conventions, and handoff integrity. | `local_calculation` — | production |

@@ -5,9 +5,9 @@
   "_terminal_path_help": "Ruta a terminal64.exe. Si es null se autodetecta o se usa $MT5_TERMINAL_PATH.",
 
   "folders": {
-    "candidates": "C:/Users/<USUARIO>/AppData/Roaming/MetaQuotes/Terminal/<HASH>/MQL5/Experts/bots candidatos",
-    "in_testing": "C:/Users/<USUARIO>/AppData/Roaming/MetaQuotes/Terminal/<HASH>/MQL5/Experts/Bots en testeo",
-    "finalists":  "C:/Users/<USUARIO>/AppData/Roaming/MetaQuotes/Terminal/<HASH>/MQL5/Experts/bots finalistas"
+    "candidates": "<MT5_DATA_DIR>/MQL5/Experts/bots candidatos",
+    "in_testing": "<MT5_DATA_DIR>/MQL5/Experts/Bots en testeo",
+    "finalists":  "<MT5_DATA_DIR>/MQL5/Experts/bots finalistas"
   },
 
   "sets_dir": null,

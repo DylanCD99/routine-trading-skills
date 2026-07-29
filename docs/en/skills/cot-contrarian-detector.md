@@ -3,7 +3,7 @@ layout: default
 title: "COT Contrarian Detector"
 grand_parent: English
 parent: Skill Guides
-nav_order: 13
+nav_order: 14
 lang_peer: /ja/skills/cot-contrarian-detector/
 permalink: /en/skills/cot-contrarian-detector/
 generated: true

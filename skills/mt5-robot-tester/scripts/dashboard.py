@@ -15,17 +15,21 @@ Usage:
     python3 dashboard.py --config C:/path/config.json --output-dir C:/path/out
     # then open http://127.0.0.1:8765/  (opens automatically)
 """
+
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
+import os
+import secrets
+import signal
 import subprocess
 import sys
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Optional
 
 _HERE = Path(__file__).resolve().parent
 _HTML = _HERE.parent / "assets" / "dashboard.html"
@@ -53,6 +57,7 @@ _GATE_KEYS = {key for _, key, *_ in GATE_FIELDS}
 
 
 # --- pure, testable status helpers ---------------------------------------
+
 
 def derive_bot_view(name: str, st: dict) -> dict:
     """Reduce a state.json bot entry to a compact dashboard row."""
@@ -85,7 +90,7 @@ def derive_bot_view(name: str, st: dict) -> dict:
     }
 
 
-def _list_ex5(folder: Optional[Path]) -> list[str]:
+def _list_ex5(folder: Path | None) -> list[str]:
     if not folder or not folder.exists():
         return []
     return sorted(p.stem for p in folder.glob("*.ex5"))
@@ -186,13 +191,57 @@ def save_config_atomic(path: Path, config: dict) -> None:
 
 # --- server ---------------------------------------------------------------
 
+
+def terminate_process_tree(proc: subprocess.Popen, timeout: float = 15) -> bool:
+    """Stop the exact process tree started by this dashboard and confirm exit."""
+    if proc.poll() is not None:
+        return True
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        else:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        proc.wait(timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        if proc.poll() is not None:
+            return True
+        try:
+            if sys.platform == "win32":
+                subprocess.run(
+                    ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
+            else:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            proc.wait(timeout)
+        except (OSError, subprocess.TimeoutExpired):
+            return proc.poll() is not None
+    return proc.poll() is not None
+
+
 class Dashboard:
     def __init__(self, config_path: Path, output_dir: Path):
         self.config_path = config_path
         self.output_dir = output_dir
         self.config = json.loads(config_path.read_text(encoding="utf-8"))
-        self.proc: Optional[subprocess.Popen] = None
+        self.proc: subprocess.Popen | None = None
         self.lock = threading.Lock()
+        self.csrf_token = secrets.token_urlsafe(32)
+        self.allowed_host = ""
+        self.allowed_origin = ""
+
+    def configure_server(self, port: int) -> None:
+        self.allowed_host = f"127.0.0.1:{port}"
+        self.allowed_origin = f"http://{self.allowed_host}"
 
     def is_running(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -201,18 +250,38 @@ class Dashboard:
         with self.lock:
             if self.is_running():
                 return {"ok": False, "message": "Ya está en ejecución"}
-            cmd = [sys.executable, str(_PIPELINE),
-                   "--config", str(self.config_path),
-                   "--output-dir", str(self.output_dir), "--resume"]
-            self.proc = subprocess.Popen(cmd)
+            cmd = [
+                sys.executable,
+                str(_PIPELINE),
+                "--config",
+                str(self.config_path),
+                "--output-dir",
+                str(self.output_dir),
+                "--resume",
+            ]
+            kwargs = (
+                {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
+                if sys.platform == "win32"
+                else {"start_new_session": True}
+            )
+            try:
+                self.proc = subprocess.Popen(cmd, **kwargs)
+            except OSError as exc:
+                return {"ok": False, "message": f"No se pudo iniciar: {exc}"}
             return {"ok": True, "message": "Pipeline lanzado", "pid": self.proc.pid}
 
     def stop(self) -> dict:
         with self.lock:
             if not self.is_running():
                 return {"ok": False, "message": "No está en ejecución"}
-            self.proc.terminate()
-            return {"ok": True, "message": "Deteniéndose…"}
+            proc = self.proc
+            if not terminate_process_tree(proc):
+                return {
+                    "ok": False,
+                    "message": "No se pudo confirmar la detención del proceso",
+                }
+            self.proc = None
+            return {"ok": True, "message": "Pipeline detenido"}
 
     def status(self) -> dict:
         # Reload config each poll so folder edits are reflected.
@@ -249,29 +318,53 @@ def make_handler(dash: Dashboard):
             self.wfile.write(body)
 
         def _json(self, obj, code=200):
-            self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
-                       "application/json; charset=utf-8")
+            self._send(
+                code,
+                json.dumps(obj, ensure_ascii=False).encode("utf-8"),
+                "application/json; charset=utf-8",
+            )
+
+        def _valid_host(self) -> bool:
+            return hmac.compare_digest(self.headers.get("Host", ""), dash.allowed_host)
+
+        def _valid_control_request(self) -> bool:
+            return (
+                self._valid_host()
+                and hmac.compare_digest(self.headers.get("Origin", ""), dash.allowed_origin)
+                and hmac.compare_digest(self.headers.get("X-CSRF-Token", ""), dash.csrf_token)
+            )
 
         def do_GET(self):  # noqa: N802
+            if not self._valid_host():
+                self._send(403, b"forbidden", "text/plain")
+                return
             if self.path in ("/", "/index.html"):
                 try:
-                    html = _HTML.read_text(encoding="utf-8")
+                    html = _HTML.read_text(encoding="utf-8").replace(
+                        "__CSRF_TOKEN__", dash.csrf_token
+                    )
                 except OSError:
                     html = "<h1>dashboard.html no encontrado</h1>"
                 self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
-            elif self.path.startswith("/api/status"):
+            elif self.path == "/api/status":
                 self._json(dash.status())
-            elif self.path.startswith("/api/gates"):
+            elif self.path == "/api/gates":
                 self._json(dash.gates())
             else:
                 self._send(404, b"not found", "text/plain")
 
         def do_POST(self):  # noqa: N802
-            if self.path.startswith("/api/start"):
+            if self.path not in ("/api/start", "/api/stop", "/api/gates"):
+                self._send(404, b"not found", "text/plain")
+                return
+            if not self._valid_control_request():
+                self._send(403, b"forbidden", "text/plain")
+                return
+            if self.path == "/api/start":
                 self._json(dash.start())
-            elif self.path.startswith("/api/stop"):
+            elif self.path == "/api/stop":
                 self._json(dash.stop())
-            elif self.path.startswith("/api/gates"):
+            else:
                 length = int(self.headers.get("Content-Length", 0))
                 raw = self.rfile.read(length) if length else b"{}"
                 try:
@@ -280,8 +373,6 @@ def make_handler(dash: Dashboard):
                     self._json({"ok": False, "message": "JSON inválido"}, 400)
                     return
                 self._json(dash.update_gates(updates))
-            else:
-                self._send(404, b"not found", "text/plain")
 
         def log_message(self, *args):  # silence default logging
             pass
@@ -289,7 +380,7 @@ def make_handler(dash: Dashboard):
     return Handler
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Panel de control local del pipeline MT5.")
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
@@ -306,7 +397,9 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     dash = Dashboard(config_path, output_dir)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(dash))
-    url = f"http://127.0.0.1:{args.port}/"
+    port = server.server_address[1]
+    dash.configure_server(port)
+    url = f"http://127.0.0.1:{port}/"
     print(f"Panel de control en {url}  (Ctrl+C para salir)")
     if not args.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
@@ -314,7 +407,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nCerrando…")
-        server.shutdown()
+    finally:
+        if dash.is_running():
+            result = dash.stop()
+            if not result["ok"]:
+                print(result["message"], file=sys.stderr)
+        server.server_close()
     return 0
 
 

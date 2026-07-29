@@ -20,13 +20,13 @@ helper ``best_param_value`` build on this.
 CLI:
     python3 parse_mt5_optimization.py report.xml --json
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 try:
     from mt5_common import canonical_header, table_records, to_float
@@ -36,8 +36,15 @@ except ImportError:  # pragma: no cover - import shim for loose script execution
 
 # Metric columns whose values are numeric.
 _NUMERIC_METRICS = {
-    "pass", "result", "profit", "trades", "profit_factor",
-    "expected_payoff", "recovery_factor", "sharpe", "drawdown_pct",
+    "pass",
+    "result",
+    "profit",
+    "trades",
+    "profit_factor",
+    "expected_payoff",
+    "recovery_factor",
+    "sharpe",
+    "drawdown_pct",
 }
 
 
@@ -70,7 +77,7 @@ def parse_passes(path: str | Path) -> list[dict]:
             plan.append(("skip", ""))
 
     passes: list[dict] = []
-    for cells in rows[header_idx + 1:]:
+    for cells in rows[header_idx + 1 :]:
         if not any(c.strip() for c in cells):
             continue
         record: dict = {"inputs": {}}
@@ -98,7 +105,7 @@ def count_positive_profit(passes: list[dict]) -> int:
     return sum(1 for p in passes if (p.get("profit") or 0) > 0)
 
 
-def best_pass(passes: list[dict], by: str = "profit") -> Optional[dict]:
+def best_pass(passes: list[dict], by: str = "profit") -> dict | None:
     """Pass with the maximum value of ``by`` (default profit)."""
     scored = [p for p in passes if isinstance(p.get(by), (int, float))]
     return max(scored, key=lambda p: p[by]) if scored else None
@@ -117,8 +124,9 @@ def best_param_value(passes: list[dict], param_name: str, by: str = "profit"):
     return best
 
 
-def gate_round1(passes: list[dict], deposit: float,
-                min_positive: int = 5, min_profit_multiple: float = 3.0) -> dict:
+def gate_round1(
+    passes: list[dict], deposit: float, min_positive: int = 5, min_profit_multiple: float = 3.0
+) -> dict:
     """Evaluate the Round-1 gate.
 
     Passes if ``>= min_positive`` symbols are profitable AND the best symbol's
@@ -128,9 +136,7 @@ def gate_round1(passes: list[dict], deposit: float,
     top = best_pass(passes, by="profit")
     best_profit = top.get("profit") if top else None
     threshold = min_profit_multiple * deposit
-    passed = (positive >= min_positive
-              and best_profit is not None
-              and best_profit >= threshold)
+    passed = positive >= min_positive and best_profit is not None and best_profit >= threshold
     return {
         "passed": passed,
         "positive_symbols": positive,
@@ -153,12 +159,13 @@ def _gate_reason(passed, positive, min_positive, best_profit, threshold) -> str:
     return "; ".join(parts) or "no cumple gate"
 
 
-def _cli(argv: Optional[list[str]] = None) -> int:
+def _cli(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Parse an MT5 optimization report.")
     parser.add_argument("report", help="Path to the .xml/.htm optimization report.")
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--deposit", type=float, default=10000.0,
-                        help="Deposit for the Round-1 gate summary.")
+    parser.add_argument(
+        "--deposit", type=float, default=10000.0, help="Deposit for the Round-1 gate summary."
+    )
     args = parser.parse_args(argv)
 
     path = Path(args.report)
@@ -171,9 +178,11 @@ def _cli(argv: Optional[list[str]] = None) -> int:
     if args.json:
         print(json.dumps({"passes": passes, "gate": gate}, indent=2))
     else:
-        print(f"passes: {len(passes)} | positivos: {gate['positive_symbols']} "
-              f"| mejor: {gate['best_symbol']} ({gate['best_profit']}) "
-              f"| gate: {'PASA' if gate['passed'] else 'NO'} ({gate['reason']})")
+        print(
+            f"passes: {len(passes)} | positivos: {gate['positive_symbols']} "
+            f"| mejor: {gate['best_symbol']} ({gate['best_profit']}) "
+            f"| gate: {'PASA' if gate['passed'] else 'NO'} ({gate['reason']})"
+        )
     return 0
 
 

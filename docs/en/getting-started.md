@@ -13,6 +13,8 @@ permalink: /en/getting-started/
 Installation instructions, API key setup, and a hands-on tutorial to run your first skill.
 {: .fs-6 .fw-300 }
 
+New to the trading vocabulary used below? Keep the [Glossary]({{ '/en/glossary/' | relative_url }}) open as a plain-language reference.
+
 <details open markdown="block">
   <summary>Table of Contents</summary>
   {: .text-delta }
