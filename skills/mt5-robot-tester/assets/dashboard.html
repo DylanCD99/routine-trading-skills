@@ -56,6 +56,17 @@
        max-height:240px; overflow:auto; font-size:12px; line-height:1.5; margin-top:8px;
        border:1px solid var(--line); }
   .muted{ color:var(--muted); } .updated{ font-size:12px; color:var(--muted); }
+  .settings{ background:var(--panel); border:1px solid var(--line); border-radius:10px;
+             padding:14px 16px; margin-bottom:18px; }
+  .settings h2{ margin-bottom:12px; }
+  .gate-grid{ display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+  .gate-field label{ display:block; font-size:12.5px; color:var(--muted); margin-bottom:5px; }
+  .gate-field input{ width:100%; font:inherit; padding:8px 10px; border-radius:8px;
+                      border:1px solid var(--line); background:var(--panel2); color:var(--txt); }
+  .gate-field input:invalid{ border-color:var(--red); }
+  .gate-field .hint{ font-size:11px; color:var(--muted); margin-top:3px; }
+  .msg-ok{ color:var(--green); } .msg-err{ color:var(--red); }
+  @media(max-width:820px){ .gate-grid{grid-template-columns:1fr;} }
   @media(max-width:820px){ .cards{grid-template-columns:repeat(2,1fr);} .cols{grid-template-columns:1fr;} }
 </style>
 </head>
@@ -77,6 +88,17 @@
     <div class="card"><div class="n" style="color:var(--green)" id="c-fin">–</div><div class="l">Finalistas (pasaron)</div></div>
     <div class="card"><div class="n" style="color:var(--red)" id="c-rej">–</div><div class="l">Rechazados</div></div>
   </div>
+
+  <section class="settings">
+    <h2>Parámetros de corte <span id="settings-lock" class="muted"></span></h2>
+    <div class="gate-grid" id="gates">
+      <div class="muted">Cargando…</div>
+    </div>
+    <div style="margin-top:10px; display:flex; align-items:center; gap:10px;">
+      <button id="save-gates" class="btn-go">💾 Guardar</button>
+      <span id="gates-msg" class="muted"></span>
+    </div>
+  </section>
 
   <div class="cols">
     <div class="folder"><h3>📥 Candidatos <span id="f-cand-n" class="muted">0</span></h3><ul id="f-cand"></ul></div>
@@ -125,12 +147,54 @@ function fillList(ul, names){
                               : '<li class="muted">(vacío)</li>';
 }
 
+function renderGates(fields){
+  $('gates').innerHTML = fields.map(f => `
+    <div class="gate-field">
+      <label for="gate-${f.key}">${f.label}</label>
+      <input id="gate-${f.key}" type="number" data-key="${f.key}"
+             step="${f.type==='int' ? '1' : '0.1'}" min="${f.min}" max="${f.max}"
+             value="${f.value}">
+      <div class="hint">rango ${f.min}–${f.max}</div>
+    </div>`).join('');
+}
+
+async function loadGates(){
+  try{
+    const g = await (await fetch('/api/gates')).json();
+    renderGates(g.fields);
+  }catch(e){
+    $('gates').innerHTML = '<div class="muted">No se pudieron cargar los parámetros.</div>';
+  }
+}
+
+$('save-gates').onclick = async ()=>{
+  const inputs = $('gates').querySelectorAll('input[data-key]');
+  const updates = {};
+  for(const inp of inputs) updates[inp.dataset.key] = Number(inp.value);
+  $('gates-msg').textContent = 'Guardando…'; $('gates-msg').className='muted';
+  const r = await (await fetch('/api/gates', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(updates)})).json();
+  if(r.ok){
+    $('gates-msg').textContent = '✓ ' + r.message; $('gates-msg').className='msg-ok';
+    if(r.fields) renderGates(r.fields);
+  } else {
+    $('gates-msg').textContent = '✗ ' + r.message; $('gates-msg').className='msg-err';
+  }
+  setTimeout(()=>{ $('gates-msg').textContent=''; }, 4000);
+};
+
+let gatesLoaded = false;
+
 async function refresh(){
   let s; try{ s = await (await fetch('/api/status')).json(); }catch(e){ return; }
   const on = s.running;
   $('run').className = 'dot ' + (on?'run-on':'run-idle');
   $('runlabel').textContent = on ? 'En ejecución' : 'Parado';
   $('go').disabled = on; $('stop').disabled = !on;
+  $('save-gates').disabled = on;
+  $('settings-lock').textContent = on ? '(bloqueado mientras corre)' : '';
+  $('gates').querySelectorAll('input').forEach(i => i.disabled = on);
+  if(!gatesLoaded){ gatesLoaded = true; loadGates(); }
 
   $('c-cand').textContent = s.summary.candidates_left;
   $('c-tested').textContent = s.summary.tested;

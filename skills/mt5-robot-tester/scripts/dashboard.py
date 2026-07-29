@@ -31,6 +31,26 @@ _HERE = Path(__file__).resolve().parent
 _HTML = _HERE.parent / "assets" / "dashboard.html"
 _PIPELINE = _HERE / "mt5_batch_tester.py"
 
+try:
+    from mt5_batch_tester import DEFAULTS
+except ImportError:  # pragma: no cover - import shim
+    sys.path.insert(0, str(_HERE))
+    from mt5_batch_tester import DEFAULTS
+
+# Editable cut-off ("gate") parameters, exposed to the HTML settings panel.
+# Each: (section in config, key, python type, min, max, label).
+GATE_FIELDS = [
+    ("gates", "round1_min_positive", int, 1, 200,
+     "Ronda 1 — mínimo de pares con beneficio positivo"),
+    ("gates", "round1_min_profit_multiple", float, 0.0, 100.0,
+     "Ronda 1 — beneficio mínimo del mejor par (x depósito)"),
+    ("gates", "finalist_min_profit_multiple", float, 0.0, 100.0,
+     "Ronda 3 / Finalista — beneficio mínimo (x depósito)"),
+    ("gates", "finalist_max_drawdown_pct", float, 0.1, 100.0,
+     "Ronda 3 / Finalista — drawdown máximo (%)"),
+]
+_GATE_KEYS = {key for _, key, *_ in GATE_FIELDS}
+
 
 # --- pure, testable status helpers ---------------------------------------
 
@@ -118,6 +138,52 @@ def build_status(config: dict, output_dir: Path, running: bool) -> dict:
     }
 
 
+# --- editable gate parameters ---------------------------------------------
+
+def get_gates(config: dict) -> dict:
+    """Current gate values (config overrides merged onto the pipeline defaults),
+    annotated with metadata for the settings panel."""
+    merged = {**DEFAULTS["gates"], **config.get("gates", {})}
+    fields = []
+    for section, key, typ, lo, hi, label in GATE_FIELDS:
+        fields.append({
+            "section": section, "key": key, "label": label,
+            "type": "int" if typ is int else "float",
+            "min": lo, "max": hi,
+            "value": merged.get(key),
+        })
+    return {"fields": fields}
+
+
+def apply_gate_updates(config: dict, updates: dict) -> dict:
+    """Return a new config with validated gate ``updates`` merged in.
+
+    Raises ValueError on an unknown key or an out-of-range/wrong-type value.
+    """
+    field_by_key = {key: (typ, lo, hi, label) for _, key, typ, lo, hi, label in GATE_FIELDS}
+    new_config = dict(config)
+    gates = dict(config.get("gates", {}))
+    for key, raw in updates.items():
+        if key not in _GATE_KEYS:
+            raise ValueError(f"parámetro desconocido: {key}")
+        typ, lo, hi, label = field_by_key[key]
+        try:
+            value = typ(raw)
+        except (TypeError, ValueError):
+            raise ValueError(f"{label}: valor no numérico ({raw!r})") from None
+        if not (lo <= value <= hi):
+            raise ValueError(f"{label}: {value} fuera de rango [{lo}, {hi}]")
+        gates[key] = value
+    new_config["gates"] = gates
+    return new_config
+
+
+def save_config_atomic(path: Path, config: dict) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
 # --- server ---------------------------------------------------------------
 
 class Dashboard:
@@ -156,6 +222,22 @@ class Dashboard:
             pass
         return build_status(self.config, self.output_dir, self.is_running())
 
+    def gates(self) -> dict:
+        return get_gates(self.config)
+
+    def update_gates(self, updates: dict) -> dict:
+        with self.lock:
+            if self.is_running():
+                return {"ok": False,
+                        "message": "No se puede cambiar mientras el pipeline corre"}
+            try:
+                new_config = apply_gate_updates(self.config, updates)
+            except ValueError as e:
+                return {"ok": False, "message": str(e)}
+            save_config_atomic(self.config_path, new_config)
+            self.config = new_config
+            return {"ok": True, "message": "Parámetros guardados", **get_gates(self.config)}
+
 
 def make_handler(dash: Dashboard):
     class Handler(BaseHTTPRequestHandler):
@@ -179,6 +261,8 @@ def make_handler(dash: Dashboard):
                 self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
             elif self.path.startswith("/api/status"):
                 self._json(dash.status())
+            elif self.path.startswith("/api/gates"):
+                self._json(dash.gates())
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -187,6 +271,15 @@ def make_handler(dash: Dashboard):
                 self._json(dash.start())
             elif self.path.startswith("/api/stop"):
                 self._json(dash.stop())
+            elif self.path.startswith("/api/gates"):
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length) if length else b"{}"
+                try:
+                    updates = json.loads(raw or b"{}")
+                except json.JSONDecodeError:
+                    self._json({"ok": False, "message": "JSON inválido"}, 400)
+                    return
+                self._json(dash.update_gates(updates))
             else:
                 self._send(404, b"not found", "text/plain")
 
