@@ -931,6 +931,27 @@ skills:
   workflows:
   - swing-opportunity-daily
   - stockbee-ep-daily
+- id: residual-edge-analyzer
+  display_name: Residual Edge Analyzer
+  category: strategy-research
+  status: beta
+  summary: Separate strategy return performance into declared baseline exposure and residual edge
+    using HAC regression, rolling stability, baseline sensitivity, and regime diagnostics.
+  timeframe: research
+  difficulty: advanced
+  integrations:
+  - id: local_calculation
+    type: calculation
+    requirement: not_required
+    note: Analyzes aligned local CSV and JSON inputs; works offline
+  inputs:
+  - strategy_return_series
+  - baseline_return_series
+  - residual_attribution_config
+  outputs:
+  - residual_edge_report
+  - attribution_diagnostics
+  workflows: []
 - id: scenario-analyzer
   display_name: Scenario Analyzer
   category: strategy-research
