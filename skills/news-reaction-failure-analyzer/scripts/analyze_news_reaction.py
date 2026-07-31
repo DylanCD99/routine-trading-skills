@@ -732,7 +732,12 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def _insufficient_evidence_output(
-    symbol: str, direction: str | None, reason: str, args: argparse.Namespace, run_context: dict
+    symbol: str,
+    direction: str | None,
+    reason: str,
+    args: argparse.Namespace,
+    run_context: dict,
+    dropped_events: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     expected_direction = expected_direction_for(direction) if direction else None
     return {
@@ -748,7 +753,7 @@ def _insufficient_evidence_output(
         "aggregate": {"mean_z3": None, "drift_stat": None, "responded_ratio": None},
         "evidence": [],
         "clusters": [],
-        "dropped_events": [],
+        "dropped_events": dropped_events if dropped_events is not None else [],
         "verdict_reason": reason,
         "run_context": run_context,
     }
@@ -941,7 +946,12 @@ def main() -> None:
             )
             emit(
                 _insufficient_evidence_output(
-                    symbol, direction, "no_price_source", args, run_context
+                    symbol,
+                    direction,
+                    "no_price_source",
+                    args,
+                    run_context,
+                    dropped_events,
                 )
             )
             sys.exit(0)
@@ -967,7 +977,16 @@ def main() -> None:
     )
 
     if price_result["error"]:
-        emit(_insufficient_evidence_output(symbol, direction, "no_price_source", args, run_context))
+        emit(
+            _insufficient_evidence_output(
+                symbol,
+                direction,
+                "no_price_source",
+                args,
+                run_context,
+                dropped_events,
+            )
+        )
         sys.exit(0)
 
     # --- Build evidence, filter relevant, cluster + verdict --------------
@@ -988,7 +1007,14 @@ def main() -> None:
 
     if not all_evidence and not usable_relevant:
         emit(
-            _insufficient_evidence_output(symbol, direction, "no_usable_events", args, run_context)
+            _insufficient_evidence_output(
+                symbol,
+                direction,
+                "no_usable_events",
+                args,
+                run_context,
+                dropped_events,
+            )
         )
         sys.exit(0)
 
