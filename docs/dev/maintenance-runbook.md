@@ -170,6 +170,34 @@ Pipeline*. State / logs:
 > is **not** repo maintenance — it is the user's personal example trading-app
 > routine. Keep it out of maintenance reasoning.
 
+### The improvement loop runs in its own checkout
+
+`scripts/run_skill_improvement.sh` does **not** run the loop against your
+working tree. The loop's git-safety precondition aborts on a dirty tree or a
+non-`main` branch, so a maintainer's ordinary editing day would block it —
+that is what stalled it for 48 days between 2026-06-13 and 2026-07-31.
+
+The launcher instead maintains a dedicated checkout at
+`~/.local/share/claude-trading-skills-bot`, overridable with
+`SKILL_LOOP_CHECKOUT`. On every run it clones if absent, then
+`fetch` → `checkout -B main origin/main` → `reset --hard` → `clean -fd`.
+`clean` deliberately omits `-x` so gitignored paths survive, and `logs/` and
+`reports/` are symlinked back to the primary repo so round-robin state,
+run logs, and daily summaries stay in one place.
+
+Consequences worth knowing:
+
+- Edit freely in your working tree; the 05:00 run is unaffected.
+- The loop always reviews `origin/main`, never your uncommitted work.
+- `logs/.skill_improvement.lock` is shared between both checkouts, so a manual
+  run and the scheduled run cannot collide.
+- To reset the automation checkout, delete the directory — the next run
+  re-clones it.
+
+Never place work-in-progress directories under `skills/`. The safety check
+blocks on **any** untracked path, so a staging folder there stops the loop
+every night. Use the gitignored `.staging/` at the repo root instead.
+
 ### When a scheduled job "didn't do anything"
 
 Inspect, don't assume:
