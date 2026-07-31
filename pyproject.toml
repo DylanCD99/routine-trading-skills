@@ -97,11 +97,12 @@ testpaths = [
     "skills/kanchi-dividend-sop/scripts/tests",
     "skills/kanchi-dividend-us-tax-accounting/scripts/tests",
     "skills/market-environment-analysis/scripts/tests",
+    # pair-trade-screener runs in its dedicated matrix row with statsmodels
+    "skills/portfolio-manager/scripts/tests",
     "skills/sector-analyst/scripts/tests",
     "skills/scenario-analyzer/scripts/tests",
     "skills/strategy-pivot-designer/scripts/tests",
     "skills/technical-analyst/scripts/tests",
-    # pair-trade-screener, portfolio-manager, signal-postmortem: tests/ exists but no test_*.py
     "skills/relative-strength-momentum-scanner/scripts/tests",
     "skills/signal-postmortem-analyzer/scripts/tests",
     "skills/downtrend-duration-analyzer/scripts/tests",

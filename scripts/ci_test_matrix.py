@@ -43,8 +43,8 @@ POLICY = {
         "reason": "Preserve the existing CI FMP contract subset and optional dependencies.",
     },
     "pair-trade-screener": {
-        "excluded": True,
-        "reason": "Known optional statsmodels dependency; preserved as a covered exclusion.",
+        "requirements": ("statsmodels>=0.14,<0.15",),
+        "reason": "Install the skill's statistical runtime only for its dedicated CI row.",
     },
     "theme-detector": {
         "requirements": ("pandas", "numpy"),
