@@ -219,6 +219,12 @@ above must have a non-empty Japanese counterpart. `manual_review_ja` must match
 back to English. Machine-readable workflow, skill, artifact, status, enum, CLI,
 file, and API-profile identifiers remain unchanged and are rendered as code.
 
+Japanese prose may be written as a multi-line folded scalar (`>-`) for
+readability. YAML joins those wrapped lines with a space, so the generator drops
+any space whose neighbours are both CJK/full-width characters. A space bordering
+ASCII — an inline `` `code` `` span, a latin word — is intentional and preserved,
+and English prose is unaffected.
+
 ### 2.2 Internal-consistency rules
 
 These are validated under `--strict-workflows`:

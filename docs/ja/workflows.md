@@ -38,9 +38,9 @@ permalink: /ja/workflows/
 
 **`core-portfolio-weekly`** · 毎週 · 約60分 · mixed · 初級
 
-**実行タイミング:** 毎週1回、通常は土曜日または日曜日の翌週市場開始前に実行する。 長期保有銘柄、配当ポジション、ポートフォリオ全体の配分を確認する。
+**実行タイミング:** 毎週1回、通常は土曜日または日曜日の翌週市場開始前に実行する。長期保有銘柄、配当ポジション、ポートフォリオ全体の配分を確認する。
 
-**実行してはいけないとき:** 日次ルーティンとして実行しない。毎日の売買でポートフォリオを頻繁に 入れ替えると、このワークフローの長期投資という前提が崩れる。
+**実行してはいけないとき:** 日次ルーティンとして実行しない。毎日の売買でポートフォリオを頻繁に入れ替えると、このワークフローの長期投資という前提が崩れる。
 
 **必須スキル:** `portfolio-manager`, `trader-memory-core`
 
@@ -66,7 +66,7 @@ permalink: /ja/workflows/
 
 - 入力: `holdings_snapshot`
 - 出力: `allocation_report`
-- **判断:** セクター別および個別銘柄の集中度は目標範囲内か。範囲外の場合、 トレーダーはどのような具体的な再配分を提案するか。
+- **判断:** セクター別および個別銘柄の集中度は目標範囲内か。範囲外の場合、トレーダーはどのような具体的な再配分を提案するか。
 
 **ステップ 3: 配当の健全性を確認する（T1-T5異常チェック）** （任意） → `kanchi-dividend-review-monitor`
 
@@ -77,7 +77,7 @@ permalink: /ja/workflows/
 
 - 入力: `allocation_report`, `dividend_review_findings`
 - 出力: `rebalance_actions`
-- **判断:** 来週実行するリバランス対応はあるか。ポジションサイズを含む具体的な 買い・売り・保有継続の一覧を確認する。
+- **判断:** 来週実行するリバランス対応はあるか。ポジションサイズを含む具体的な買い・売り・保有継続の一覧を確認する。
 
 **ステップ 5: 週次レビューを記録する** → `trader-memory-core`
 
@@ -98,9 +98,9 @@ permalink: /ja/workflows/
 
 **`kanchi-dividend-weekly`** · 毎週 · 約60分 · mixed · 中級
 
-**実行タイミング:** Kanchiの5ステップ手法で米国上場の新規配当候補を抽出・精査するため、週次で実行する。 利回りと品質でスクリーニングし、有力銘柄を詳細分析して、エントリー前に根拠を 完全に記録した候補の投資仮説を登録する。v1は米国上場の配当株のみを対象とする。
+**実行タイミング:** Kanchiの5ステップ手法で米国上場の新規配当候補を抽出・精査するため、週次で実行する。利回りと品質でスクリーニングし、有力銘柄を詳細分析して、エントリー前に根拠を完全に記録した候補の投資仮説を登録する。v1は米国上場の配当株のみを対象とする。
 
-**実行してはいけないとき:** 日本株や米国以外の市場に上場する配当株には使用しない。v1では対応せず、対応を示唆もしない。 Kanchi式スクリーニングが収益性のある戦略だと主張するものではない。これは買いシグナルではなく、 規律ある候補抽出手順である。既存保有銘柄の管理には使用しない。それは core-portfolio-weekly の役割であり、このワークフローは新規候補の発見と精査を目的とする。 注文は自動発注せず、すべての買い注文をブローカーで手動入力する。
+**実行してはいけないとき:** 日本株や米国以外の市場に上場する配当株には使用しない。v1では対応せず、対応を示唆もしない。 Kanchi式スクリーニングが収益性のある戦略だと主張するものではない。これは買いシグナルではなく、規律ある候補抽出手順である。既存保有銘柄の管理には使用しない。それは core-portfolio-weekly の役割であり、このワークフローは新規候補の発見と精査を目的とする。注文は自動発注せず、すべての買い注文をブローカーで手動入力する。
 
 **必須スキル:** `kanchi-dividend-sop`, `trader-memory-core`
 
@@ -108,14 +108,14 @@ permalink: /ja/workflows/
 
 **前提ワークフロー（参考情報）:**
 
-- `core-portfolio-weekly` が期待する成果物 `holdings_snapshot` — 任意の税務またはレビュー監視チェックを行う場合、そのライブ保有情報を入力元として使う。 各スキル固有の手動入力スキーマへ正規化し、該当する入力がなければステップ4と5を省略する。
+- `core-portfolio-weekly` が期待する成果物 `holdings_snapshot` — 任意の税務またはレビュー監視チェックを行う場合、そのライブ保有情報を入力元として使う。各スキル固有の手動入力スキーマへ正規化し、該当する入力がなければステップ4と5を省略する。
 
 **手動入力契約:**
 
 | 入力 | 必須 | 使用ステップ | スキーマ参照 | 説明 |
 |---|---|---|---|---|
 | `tax_holdings_input` | なし | 4 | `skills/kanchi-dividend-us-tax-accounting/references/input-schema.md` | holdings[] を含むオペレーター提供のJSON。新規候補では予定口座を仮定値として指定し、 hold_days_in_window は省略する。これにより、結果を誤って確認済みにせず assumption-required のまま保持する。 |
-| `review_monitor_input` | なし | 5 | `skills/kanchi-dividend-review-monitor/references/input-schema.md` | 配当とリスクの証拠を含む、正規化済みの既存保有銘柄JSON。候補ティッカーだけからは 導出できないため、まだ保有しておらず監視証拠がない新規銘柄ではステップ5を省略する。 |
+| `review_monitor_input` | なし | 5 | `skills/kanchi-dividend-review-monitor/references/input-schema.md` | 配当とリスクの証拠を含む、正規化済みの既存保有銘柄JSON。候補ティッカーだけからは導出できないため、まだ保有しておらず監視証拠がない新規銘柄ではステップ5を省略する。 |
 
 **成果物一覧:**
 
@@ -143,7 +143,7 @@ permalink: /ja/workflows/
 
 - 入力: `high_yield_candidates`, `pullback_candidates`
 - 出力: `kanchi_candidates`, `stock_memo`
-- **判断:** 各候補のKanchi判定は実行可能な段階（CLEAN-PASS / PASS-CAUTION / CONDITIONAL-PASS）に達しているか。HOLD-REVIEW、STEP1-RECHECK、FAIL は fail-closed とし、サイズ計算や登録へ進めずここで停止する。候補はステップ1・2の スクリーナー出力を利用可能なら使うか、手動提供のティッカー一覧から取得できる。 このステップの実行にどちらのスクリーナーも必須ではない。
+- **判断:** 各候補のKanchi判定は実行可能な段階（CLEAN-PASS / PASS-CAUTION / CONDITIONAL-PASS）に達しているか。HOLD-REVIEW、STEP1-RECHECK、FAIL は fail-closed とし、サイズ計算や登録へ進めずここで停止する。候補はステップ1・2のスクリーナー出力を利用可能なら使うか、手動提供のティッカー一覧から取得できる。このステップの実行にどちらのスクリーナーも必須ではない。
 
 **ステップ 4: 米国税務と口座配置の扱いを確認する** （任意） → `kanchi-dividend-us-tax-accounting`
 
@@ -157,7 +157,7 @@ permalink: /ja/workflows/
 
 - 入力: `kanchi_candidates`, `stock_memo`, `account_location_advice`, `review_queue`
 - 出力: `thesis_record`
-- **判断:** 実行可能な各候補について、kanchi_candidates の判定を IDEA の投資仮説として 取り込み、保存した stock_memo ファイルを thesis_store.link_report() で関連付ける。 利用可能な場合は、税務・口座配置の助言とレビュー監視フラグも関連付け、根拠が完全に 記録されたKanchiメモを、文章で参照するだけでなく監査可能な記録の一部にする。 注文前に未解決の阻害要因、ポジションサイズ、セクター集中、分割買い計画を確認する。 ブローカーで実際に約定するまで投資仮説を ACTIVE に移行しない。このステップは IDEA / ENTRY_READY までとする。
+- **判断:** 実行可能な各候補について、kanchi_candidates の判定を IDEA の投資仮説として取り込み、保存した stock_memo ファイルを thesis_store.link_report() で関連付ける。利用可能な場合は、税務・口座配置の助言とレビュー監視フラグも関連付け、根拠が完全に記録されたKanchiメモを、文章で参照するだけでなく監査可能な記録の一部にする。注文前に未解決の阻害要因、ポジションサイズ、セクター集中、分割買い計画を確認する。ブローカーで実際に約定するまで投資仮説を ACTIVE に移行しない。このステップは IDEA / ENTRY_READY までとする。
 
 **手動レビュー:**
 
@@ -180,9 +180,9 @@ permalink: /ja/workflows/
 
 **`market-regime-daily`** · 毎日 · 約15分 · no-api-basic · 初級
 
-**実行タイミング:** その日の新規スイング取引リスクを検討する前に実行する。市場開始前、 または開始後30分以内に実行する。
+**実行タイミング:** その日の新規スイング取引リスクを検討する前に実行する。市場開始前、または開始後30分以内に実行する。
 
-**実行してはいけないとき:** この出力を単独の売買シグナルとして使用しない。exposure_decision は 方針（allow / restrict / cash-priority）であり、売買指示ではない。
+**実行してはいけないとき:** この出力を単独の売買シグナルとして使用しない。exposure_decision は方針（allow / restrict / cash-priority）であり、売買指示ではない。
 
 **必須スキル:** `market-breadth-analyzer`, `uptrend-analyzer`, `exposure-coach`
 
@@ -215,7 +215,7 @@ permalink: /ja/workflows/
 
 - 入力: `market_breadth_report`, `uptrend_report`, `top_risk_report`
 - 出力: `exposure_decision`
-- **判断:** 本日の騰落状況、上昇トレンドへの参加状況、市場天井リスクを踏まえ、 新規スイング取引のリスクを allow、restrict、cash-priority の どれにするか。
+- **判断:** 本日の騰落状況、上昇トレンドへの参加状況、市場天井リスクを踏まえ、新規スイング取引のリスクを allow、restrict、cash-priority のどれにするか。
 
 **手動レビュー:**
 
@@ -231,9 +231,9 @@ permalink: /ja/workflows/
 
 **`monthly-performance-review`** · 毎月 · 約90分 · no-api-basic · 中級
 
-**実行タイミング:** 毎月最初の週末に、前月の決済済みポジション、未決済の投資仮説の健全性、 プロセス改善を確認する。計画 -> 取引 -> 記録 -> 振り返り -> 改善 の ループを完結させる。
+**実行タイミング:** 毎月最初の週末に、前月の決済済みポジション、未決済の投資仮説の健全性、プロセス改善を確認する。計画 -> 取引 -> 記録 -> 振り返り -> 改善のループを完結させる。
 
-**実行してはいけないとき:** 損失月であっても省略しない。そのような月にこそレビューが重要である。 ノイズを除くため月次としているので、週次では実行しない。
+**実行してはいけないとき:** 損失月であっても省略しない。そのような月にこそレビューが重要である。ノイズを除くため月次としているので、週次では実行しない。
 
 **必須スキル:** `trader-memory-core`, `signal-postmortem`
 
@@ -264,7 +264,7 @@ permalink: /ja/workflows/
 
 - 入力: `monthly_aggregate`
 - 出力: `aggregate_postmortem`
-- **判断:** 当月の結果にどのような反復パターンがあるか。投資仮説の質、執行、 市場環境、偶然性に分類する。
+- **判断:** 当月の結果にどのような反復パターンがあるか。投資仮説の質、執行、市場環境、偶然性に分類する。
 
 **ステップ 3: 月次のプロセス、リスク、行動パターンを振り返る** （任意） （判断ゲート） → `trade-performance-coach`
 
@@ -286,7 +286,7 @@ permalink: /ja/workflows/
 
 - 入力: `aggregate_postmortem`, `hypothesis_revalidation`, `skill_review_findings`
 - 出力: `monthly_decision_log`, `rule_changes_for_next_month`, `skill_improvement_backlog`
-- **判断:** 当月の証拠に基づき、翌月に変更する具体的なルールは何か。取引側のルールと リポジトリ側の改善は分けて扱う。
+- **判断:** 当月の証拠に基づき、翌月に変更する具体的なルールは何か。取引側のルールとリポジトリ側の改善は分けて扱う。
 
 **手動レビュー:**
 
@@ -309,9 +309,9 @@ permalink: /ja/workflows/
 
 **`multi-asset-opportunity-daily`** · 毎日 · 約45分 · mixed · 中級
 
-**実行タイミング:** market-regime-daily が非制限的な exposure_decision を出した後にのみ実行する。 マクロ、テーマ、ニュースを横断して、株式、株式プロキシ経由の商品、 オプション表現の投資アイデアを抽出し、優先順位付きの仮説カードにまとめる。
+**実行タイミング:** market-regime-daily が非制限的な exposure_decision を出した後にのみ実行する。マクロ、テーマ、ニュースを横断して、株式、株式プロキシ経由の商品、オプション表現の投資アイデアを抽出し、優先順位付きの仮説カードにまとめる。
 
-**実行してはいけないとき:** 最新の market-regime-daily の exposure_decision が cash-priority の場合は 実行しない。仮説カードを売買シグナルとして扱わない。カードには manual_review_required があり、資金を動かす前に人間の承認が必要である。 外国為替の出力は調査専用とし、ブローカーには決して連携しない。
+**実行してはいけないとき:** 最新の market-regime-daily の exposure_decision が cash-priority の場合は実行しない。仮説カードを売買シグナルとして扱わない。カードには manual_review_required があり、資金を動かす前に人間の承認が必要である。外国為替の出力は調査専用とし、ブローカーには決して連携しない。
 
 **必須スキル:** `macro-regime-detector`, `theme-detector`, `trade-hypothesis-ideator`, `position-sizer`, `trader-memory-core`
 
@@ -319,7 +319,7 @@ permalink: /ja/workflows/
 
 **前提ワークフロー（参考情報）:**
 
-- `market-regime-daily` が期待する成果物 `exposure_decision` — マルチアセットの投資機会を探索するには、非制限的なエクスポージャー方針が 必要である。cash-priority の日は見送り、restrict の日は対象範囲を縮小する。
+- `market-regime-daily` が期待する成果物 `exposure_decision` — マルチアセットの投資機会を探索するには、非制限的なエクスポージャー方針が必要である。cash-priority の日は見送り、restrict の日は対象範囲を縮小する。
 
 **成果物一覧:**
 
@@ -352,7 +352,7 @@ permalink: /ja/workflows/
 
 - 入力: `macro_regime_brief`, `hot_themes`, `catalyst_news_brief`
 - 出力: `hypothesis_cards`
-- **判断:** 各仮説で、第1層（マクロ）は第2層（テーマ）と整合し、市場への織り込み状況は まだ有利か。コンセンサスとの差が不明確、またはすでに解消済みのカードは却下する。
+- **判断:** 各仮説で、第1層（マクロ）は第2層（テーマ）と整合し、市場への織り込み状況はまだ有利か。コンセンサスとの差が不明確、またはすでに解消済みのカードは却下する。
 
 **ステップ 5: 仮説カードにリスク基準のポジションサイズを適用する** → `position-sizer`
 
@@ -363,7 +363,7 @@ permalink: /ja/workflows/
 
 - 入力: `hypothesis_cards`, `sized_hypotheses`
 - 出力: `opportunity_journal_entries`
-- **判断:** どの仮説を IDEA から ENTRY_READY に進め、どれを追加確認待ちの IDEA に とどめ、どれを却下するか。
+- **判断:** どの仮説を IDEA から ENTRY_READY に進め、どれを追加確認待ちの IDEA にとどめ、どれを却下するか。
 
 **手動レビュー:**
 
@@ -381,9 +381,9 @@ permalink: /ja/workflows/
 
 **`shapiro-contrarian`** · 毎週 · 約60分 · fmp-required · 上級
 
-**実行タイミング:** CFTCのCommitment of Tradersレポート公開後（毎週金曜日の米東部時間午後3時30分頃、 火曜日時点の建玉）に週次で実行する。約65の先物市場から投機筋の極端な混雑を探し、 ニュース反応の失敗と週足の価格反転の両方が確認できた場合にのみ、 契約数を算出した逆張り計画を作成する。
+**実行タイミング:** CFTCのCommitment of Tradersレポート公開後（毎週金曜日の米東部時間午後3時30分頃、火曜日時点の建玉）に週次で実行する。約65の先物市場から投機筋の極端な混雑を探し、ニュース反応の失敗と週足の価格反転の両方が確認できた場合にのみ、契約数を算出した逆張り計画を作成する。
 
-**実行してはいけないとき:** 日中または週1回を超えて実行しない。COTデータは週次更新であり、エッジは日中値動きではなく 建玉状況に由来する。混雑の極端値だけで取引しない。ポジションサイズ計算前に、混雑、 ニュース反応の失敗、価格動向がすべて CONFIRMED となり、ゲートが READY_FOR_PLAN に 到達する必要がある。COTはCFTC先物市場のみを対象とするため、株式には使用しない。
+**実行してはいけないとき:** 日中または週1回を超えて実行しない。COTデータは週次更新であり、エッジは日中値動きではなく建玉状況に由来する。混雑の極端値だけで取引しない。ポジションサイズ計算前に、混雑、ニュース反応の失敗、価格動向がすべて CONFIRMED となり、ゲートが READY_FOR_PLAN に到達する必要がある。COTはCFTC先物市場のみを対象とするため、株式には使用しない。
 
 **必須スキル:** `cot-contrarian-detector`, `news-reaction-failure-analyzer`, `technical-analyst`, `contrarian-setup-gate`, `futures-position-sizer`, `trader-memory-core`
 
@@ -405,13 +405,13 @@ permalink: /ja/workflows/
 **ステップ 1: COTの混雑度をスクリーニングする** （判断ゲート） → `cot-contrarian-detector`
 
 - 出力: `cot_crowding_report`
-- **判断:** 今週、3年間のCOT指数で混雑の極端値（CROWDED_LONG / CROWDED_SHORT）にある 先物市場はどれか。混雑だけではシグナルにならないため、極端値のみ次へ進める。
+- **判断:** 今週、3年間のCOT指数で混雑の極端値（CROWDED_LONG / CROWDED_SHORT）にある先物市場はどれか。混雑だけではシグナルにならないため、極端値のみ次へ進める。
 
 **ステップ 2: ニュース反応の失敗を確認する** （判断ゲート） → `news-reaction-failure-analyzer`
 
 - 入力: `cot_crowding_report`
 - 出力: `news_failure_verdict`
-- **判断:** 各混雑市場で、群衆の方向に有利なニュースに価格が反応しなかったことを CONFIRMED と判定できるか。WebSearchで作成した一次情報・通信社情報の イベントファイルを使用し、NOT_CONFIRMED / INSUFFICIENT_EVIDENCE の市場は除外する。
+- **判断:** 各混雑市場で、群衆の方向に有利なニュースに価格が反応しなかったことを CONFIRMED と判定できるか。WebSearchで作成した一次情報・通信社情報のイベントファイルを使用し、NOT_CONFIRMED / INSUFFICIENT_EVIDENCE の市場は除外する。
 
 **ステップ 3: 週足の価格反転を確認する** （判断ゲート） → `technical-analyst`
 
@@ -423,7 +423,7 @@ permalink: /ja/workflows/
 
 - 入力: `cot_crowding_report`, `news_failure_verdict`, `price_action_confirmation_report`
 - 出力: `contrarian_setup_gate_report`
-- **判断:** ゲートは、混雑、ニュース反応の失敗、価格動向がすべて CONFIRMED となる fail-closed の READY_FOR_PLAN に到達したか。READY_FOR_PLAN の市場だけを ポジションサイズ計算へ進め、CROWDED / WATCHING_PRICE / REJECTED / INSUFFICIENT_EVIDENCE はここで停止する。
+- **判断:** ゲートは、混雑、ニュース反応の失敗、価格動向がすべて CONFIRMED となる fail-closed の READY_FOR_PLAN に到達したか。READY_FOR_PLAN の市場だけをポジションサイズ計算へ進め、CROWDED / WATCHING_PRICE / REJECTED / INSUFFICIENT_EVIDENCE はここで停止する。
 
 **ステップ 5: 先物ポジションのサイズを計算する** → `futures-position-sizer`
 
@@ -434,7 +434,7 @@ permalink: /ja/workflows/
 
 - 入力: `futures_position_size`, `contrarian_setup_gate_report`
 - 出力: `contrarian_thesis_entry`
-- **判断:** sizer出力の sizing_status が SIZED の逆張りだけを、NO_TRADE の結果を除外して 次の順序で登録する。(1) 最初に IDEA の投資仮説を作成する（手動取り込みまたは register()。attach-futures-position は既存の投資仮説に付加するだけで新規作成しない）。 (2) attach-futures-position で SIZED レポートを付加し、契約数、方向、乗数、USD通貨、 リスクをポジションへ保存する。(3) cot_crowding_report、news_failure_verdict、 price_action_confirmation_report、contrarian_setup_gate_report を thesis_store.link_report() で投資仮説に関連付け、証拠の連鎖を監査可能にする。 (4) ブローカーで注文が実際に約定した後にのみ open-position で ACTIVE へ移行する。 取引ごとのリスクがsizer出力と一致し、ポートフォリオ全体のリスク量が上限内であることを確認する。
+- **判断:** sizer出力の sizing_status が SIZED の逆張りだけを、NO_TRADE の結果を除外して次の順序で登録する。(1) 最初に IDEA の投資仮説を作成する（手動取り込みまたは register()。attach-futures-position は既存の投資仮説に付加するだけで新規作成しない）。 (2) attach-futures-position で SIZED レポートを付加し、契約数、方向、乗数、USD通貨、リスクをポジションへ保存する。(3) cot_crowding_report、news_failure_verdict、 price_action_confirmation_report、contrarian_setup_gate_report を thesis_store.link_report() で投資仮説に関連付け、証拠の連鎖を監査可能にする。 (4) ブローカーで注文が実際に約定した後にのみ open-position で ACTIVE へ移行する。取引ごとのリスクがsizer出力と一致し、ポートフォリオ全体のリスク量が上限内であることを確認する。
 
 **手動レビュー:**
 
@@ -457,9 +457,9 @@ permalink: /ja/workflows/
 
 **`stockbee-20pct-study-daily`** · 毎日 · 約30分 · mixed · 上級
 
-**実行タイミング:** 米国市場の取引終了後、または過去データの補完調査時に実行する。+20% / -20% の 値動きを検出し、イベントの背景を分類し、観測期間を終えた結果を更新して、 急激な市場変動のモデルブックを蓄積する。
+**実行タイミング:** 米国市場の取引終了後、または過去データの補完調査時に実行する。+20% / -20% の値動きを検出し、イベントの背景を分類し、観測期間を終えた結果を更新して、急激な市場変動のモデルブックを蓄積する。
 
-**実行してはいけないとき:** 売買シグナルや自動執行のワークフローとして使用しない。少数サンプル、 現在の銘柄集合だけを使った分析、または生存者バイアスとデータ品質の注記がない イベントから新しいルールを採用しない。
+**実行してはいけないとき:** 売買シグナルや自動執行のワークフローとして使用しない。少数サンプル、現在の銘柄集合だけを使った分析、または生存者バイアスとデータ品質の注記がないイベントから新しいルールを採用しない。
 
 **必須スキル:** `stockbee-20pct-study`
 
@@ -496,7 +496,7 @@ permalink: /ja/workflows/
 
 - 入力: `matured_event_outcomes`
 - 出力: `twenty_pct_cohort_summary`, `edge_hints_yaml`
-- **判断:** 20%変動パターンのうち、記録だけの観察ではなくエッジ研究へ進めるのに十分な サンプル数、安定した結果傾向、現実的な執行可能性を備えるものはどれか。
+- **判断:** 20%変動パターンのうち、記録だけの観察ではなくエッジ研究へ進めるのに十分なサンプル数、安定した結果傾向、現実的な執行可能性を備えるものはどれか。
 
 **ステップ 5: 採用した学びを記録する** （任意） （判断ゲート） → `trader-memory-core`
 
@@ -520,9 +520,9 @@ permalink: /ja/workflows/
 
 **`stockbee-ep-daily`** · 毎日 · 約40分 · mixed · 上級
 
-**実行タイミング:** 決算・ニュースが多い日に市場レジームのワークフローが新規リスクを許可した後、 または状況を変える重大なカタリストが現れたときに随時実行する。Day 1の Episodic Pivot候補を分類し、本日実行可能か、遅延EPの監視銘柄か、 PEADへ引き渡す候補かを判断する。
+**実行タイミング:** 決算・ニュースが多い日に市場レジームのワークフローが新規リスクを許可した後、または状況を変える重大なカタリストが現れたときに随時実行する。Day 1の Episodic Pivot候補を分類し、本日実行可能か、遅延EPの監視銘柄か、 PEADへ引き渡す候補かを判断する。
 
-**実行してはいけないとき:** カタリスト入力なしの機械的な銘柄スクリーナーとして実行しない。市場レジームの ゲート、チャート検証、ポジションサイズ計算、カタリストの手動確認を迂回するために 使用しない。
+**実行してはいけないとき:** カタリスト入力なしの機械的な銘柄スクリーナーとして実行しない。市場レジームのゲート、チャート検証、ポジションサイズ計算、カタリストの手動確認を迂回するために使用しない。
 
 **必須スキル:** `drawdown-circuit-breaker`, `stockbee-episodic-pivot-analyzer`, `technical-analyst`, `position-sizer`, `trader-memory-core`, `pre-trade-discipline-gate`
 
@@ -567,13 +567,13 @@ permalink: /ja/workflows/
 
 - 入力: `earnings_candidates`, `momentum_burst_candidates`
 - 出力: `episodic_pivot_candidates`, `pead_handoff_candidates`, `delayed_ep_watchlist`
-- **判断:** 状況を変える真のカタリストに加え、価格と出来高の確認がある候補はどれか。 ACTIONABLE_DAY1 と DELAYED_EP_WATCH を分け、見出しだけに反応した 低品質な値動きは却下する。
+- **判断:** 状況を変える真のカタリストに加え、価格と出来高の確認がある候補はどれか。 ACTIONABLE_DAY1 と DELAYED_EP_WATCH を分け、見出しだけに反応した低品質な値動きは却下する。
 
 **ステップ 5: EPチャートの品質を検証する** （判断ゲート） → `technical-analyst`
 
 - 入力: `episodic_pivot_candidates`
 - 出力: `validated_ep_setups`
-- **判断:** チャートは、終値の質、流動性、EP当日の安値までのリスクが許容できる 明確なEP反応を示しているか。
+- **判断:** チャートは、終値の質、流動性、EP当日の安値までのリスクが許容できる明確なEP反応を示しているか。
 
 **ステップ 6: EPのポジションサイズを計算する** → `position-sizer`
 
@@ -589,13 +589,13 @@ permalink: /ja/workflows/
 
 - 入力: `validated_ep_setups`, `ep_position_sizing`, `ep_trade_plan`
 - 出力: `ep_journal_entry`
-- **判断:** どの候補を有効な投資仮説とし、どれを遅延EP / PEADの監視対象とし、 初期スコアが高くてもどれを無視するか。
+- **判断:** どの候補を有効な投資仮説とし、どれを遅延EP / PEADの監視対象とし、初期スコアが高くてもどれを無視するか。
 
 **ステップ 9: EPの手動執行規律ゲートを実行する** （判断ゲート） → `pre-trade-discipline-gate`
 
 - 入力: `circuit_breaker_decision`, `ep_journal_entry`, `ep_position_sizing`, `ep_trade_plan`
 - 出力: `pre_trade_discipline_decision`
-- **判断:** ブローカーへ手動注文を出す前に、ACTIONABLE_DAY1 または ENTRY_READY の EP候補は、文章化された計画、事前設定したストップ、ポジションサイズ、直近損失、 市場レジーム、サーキットブレーカーの規律チェックを通過しているか。 遅延EP、PEAD引き渡し、無視、却下の候補は注文承認ではなく、取引なしの記録として扱う。
+- **判断:** ブローカーへ手動注文を出す前に、ACTIONABLE_DAY1 または ENTRY_READY の EP候補は、文章化された計画、事前設定したストップ、ポジションサイズ、直近損失、市場レジーム、サーキットブレーカーの規律チェックを通過しているか。遅延EP、PEAD引き渡し、無視、却下の候補は注文承認ではなく、取引なしの記録として扱う。
 
 **手動レビュー:**
 
@@ -616,9 +616,9 @@ permalink: /ja/workflows/
 
 **`stockbee-fluency-loop`** · 毎日 · 約20分 · no-api-basic · 中級
 
-**実行タイミング:** stockbee-momentum-burst-screener が候補レポートを生成した後と、3取引日・5取引日の 観測期間が経過した後に実行する。Stockbee Momentum Burstのモデルブックを作り、 トレーダーのセットアップ認識力を高める。
+**実行タイミング:** stockbee-momentum-burst-screener が候補レポートを生成した後と、3取引日・5取引日の観測期間が経過した後に実行する。Stockbee Momentum Burstのモデルブックを作り、トレーダーのセットアップ認識力を高める。
 
-**実行してはいけないとき:** 執行ワークフローやシグナルサービスとして使用しない。少数サンプルから取引ルールを 変更しない。セットアップタグを採用・除外する前に、十分な観測済み事例と チャートの手動レビューを求める。
+**実行してはいけないとき:** 執行ワークフローやシグナルサービスとして使用しない。少数サンプルから取引ルールを変更しない。セットアップタグを採用・除外する前に、十分な観測済み事例とチャートの手動レビューを求める。
 
 **必須スキル:** `stockbee-setup-fluency-trainer`
 
@@ -649,7 +649,7 @@ permalink: /ja/workflows/
 
 - 入力: `matured_setup_outcomes`
 - 出力: `setup_fluency_summary`, `rule_candidates`
-- **判断:** 採用、格下げ、監視継続を判断できるだけの観測済み事例があるセットアップタグは どれか。取引ルールを変更する前に代表的なチャートを確認する。
+- **判断:** 採用、格下げ、監視継続を判断できるだけの観測済み事例があるセットアップタグはどれか。取引ルールを変更する前に代表的なチャートを確認する。
 
 **ステップ 4: 採用した学びを記録する** （任意） （判断ゲート） → `trader-memory-core`
 
@@ -672,7 +672,7 @@ permalink: /ja/workflows/
 
 **`swing-opportunity-daily`** · 毎日 · 約40分 · fmp-required · 中級
 
-**実行タイミング:** market-regime-daily が非制限的なエクスポージャー判断を出した後にのみ実行する。 スイング取引候補を抽出し、エントリー計画を作成する。
+**実行タイミング:** market-regime-daily が非制限的なエクスポージャー判断を出した後にのみ実行する。スイング取引候補を抽出し、エントリー計画を作成する。
 
 **実行してはいけないとき:** 最新の market-regime-daily の exposure_decision が cash-priority または restrictive の場合は実行しない。レジームゲートを通さず、単独のスクリーナーとして使用しない。
 
@@ -731,7 +731,7 @@ permalink: /ja/workflows/
 
 - 入力: `vcp_candidates`, `momentum_burst_candidates`, `exhaustion_hammer_candidates`, `canslim_candidates`, `theme_candidates`
 - 出力: `validated_setups`
-- **判断:** 明確な週足セットアップ（Stage 2の上昇トレンド、引き締まったベース、または 制御されたベースからのStockbee式レンジ拡大）があり、チャートの手動レビューを 通過する候補はどれか。エグゾースションハンマーでは、押しが投資仮説を崩すものではなく、 当日安値までのリスクが許容範囲かを確認する。通過しない候補は却下する。
+- **判断:** 明確な週足セットアップ（Stage 2の上昇トレンド、引き締まったベース、または制御されたベースからのStockbee式レンジ拡大）があり、チャートの手動レビューを通過する候補はどれか。エグゾースションハンマーでは、押しが投資仮説を崩すものではなく、当日安値までのリスクが許容範囲かを確認する。通過しない候補は却下する。
 
 **ステップ 8: ポジションサイズを計算する** → `position-sizer`
 
@@ -747,13 +747,13 @@ permalink: /ja/workflows/
 
 - 入力: `position_sizing`, `trade_plans`
 - 出力: `candidate_journal_entry`
-- **判断:** 検証を通過した各候補について、エントリー、ストップ、目標を含む投資仮説を登録する。 取引ごとのリスクが position-sizer の出力と一致し、ポートフォリオ全体の リスク量が上限内であることを確認する。
+- **判断:** 検証を通過した各候補について、エントリー、ストップ、目標を含む投資仮説を登録する。取引ごとのリスクが position-sizer の出力と一致し、ポートフォリオ全体のリスク量が上限内であることを確認する。
 
 **ステップ 11: 手動執行規律ゲートを実行する** （判断ゲート） → `pre-trade-discipline-gate`
 
 - 入力: `candidate_journal_entry`, `position_sizing`, `trade_plans`, `circuit_breaker_decision`
 - 出力: `pre_trade_discipline_decision`
-- **判断:** ブローカーへ手動注文を出す前に、実行可能な各候補は、文章化された計画、事前設定した ストップ、ポジションサイズ、直近損失、市場レジーム、サーキットブレーカーの 規律チェックを通過しているか。
+- **判断:** ブローカーへ手動注文を出す前に、実行可能な各候補は、文章化された計画、事前設定したストップ、ポジションサイズ、直近損失、市場レジーム、サーキットブレーカーの規律チェックを通過しているか。
 
 **手動レビュー:**
 
@@ -774,7 +774,7 @@ permalink: /ja/workflows/
 
 **`trade-memory-loop`** · 随時 · 約30分 · no-api-basic · 初級
 
-**実行タイミング:** ポジションを全決済または一部決済するたびに実行する。結果を記録して事後分析を作成し、 任意でプロセス、リスク、執行、行動パターンを振り返り、元の仮説をバックテストで再検証する。
+**実行タイミング:** ポジションを全決済または一部決済するたびに実行する。結果を記録して事後分析を作成し、任意でプロセス、リスク、執行、行動パターンを振り返り、元の仮説をバックテストで再検証する。
 
 **実行してはいけないとき:** ポジション決済前には実行しない。未決済の投資仮説を更新する場合は trader-memory-core を直接使用する。利益取引であっても、決済後にこのループを省略しない。
 
@@ -803,7 +803,7 @@ permalink: /ja/workflows/
 
 - 入力: `closed_thesis_record`
 - 出力: `postmortem_findings`
-- **判断:** 結果の根本原因は、投資仮説の質、執行、市場環境、偶然性のどれか。 分類して記録する。
+- **判断:** 結果の根本原因は、投資仮説の質、執行、市場環境、偶然性のどれか。分類して記録する。
 
 **ステップ 3: プロセス、リスク、行動パターンを振り返る** （任意） （判断ゲート） → `trade-performance-coach`
 

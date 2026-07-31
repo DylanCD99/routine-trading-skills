@@ -287,6 +287,39 @@ def test_render_japanese_uses_japanese_labels(workflows_dir: Path) -> None:
     assert "When the test demands it." not in page
 
 
+def test_render_japanese_drops_folded_scalar_space_between_japanese(
+    workflows_dir: Path,
+) -> None:
+    # A YAML folded scalar (">-") joins its wrapped lines with a space. That is
+    # correct for English but leaks a visible space into Japanese prose.
+    make_workflow(
+        workflows_dir,
+        id="folded-ja",
+        when_to_run_ja="テストで必要なときに実行する。 結果を確認する。",
+        when_not_to_run_ja="判断に迷うときは 実行しない。",
+    )
+
+    page = render_page(load_workflows(workflows_dir), "ja")
+
+    assert "テストで必要なときに実行する。結果を確認する。" in page
+    assert "判断に迷うときは実行しない。" in page
+    assert "実行する。 結果" not in page
+
+
+def test_render_japanese_keeps_space_next_to_ascii(workflows_dir: Path) -> None:
+    # Only a space with CJK on BOTH sides is a folded-scalar artifact; a space
+    # bordering an inline code span or a latin word is intentional.
+    make_workflow(
+        workflows_dir,
+        id="mixed-ja",
+        when_to_run_ja="`alpha` を実行し、 `beta` を確認する。",
+    )
+
+    page = render_page(load_workflows(workflows_dir), "ja")
+
+    assert "`alpha` を実行し、 `beta` を確認する。" in page
+
+
 def test_render_japanese_requires_translated_fields(workflows_dir: Path) -> None:
     workflow = make_workflow(workflows_dir, id="missing-ja")
     del workflow["steps"][0]["name_ja"]

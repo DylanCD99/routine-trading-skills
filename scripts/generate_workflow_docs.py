@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -188,12 +189,23 @@ def load_workflows(workflows_dir: Path) -> list[dict[str, Any]]:
 # Markdown rendering
 # ---------------------------------------------------------------------------
 
+# CJK punctuation, kana, ideographs, and full-width forms — the character
+# classes that never take an inter-character space in Japanese typography.
+_CJK_CHAR_CLASS = "　-〿぀-ヿ㐀-䶿一-鿿豈-﫿＀-￯"
+_CJK_JOINED_SPACE = re.compile(f"(?<=[{_CJK_CHAR_CLASS}]) +(?=[{_CJK_CHAR_CLASS}])")
+
 
 def _wrap(text: str | None) -> str:
     if not text:
         return ""
     # Collapse YAML folded-scalar multiline into single line
-    return " ".join(text.split())
+    collapsed = " ".join(text.split())
+    # A YAML folded scalar joins its wrapped lines with a space. That is correct
+    # for English, but Japanese prose has no inter-character space, so the join
+    # leaks a visible space into the middle of a sentence. Drop the space only
+    # when BOTH neighbours are CJK/full-width — a space next to ASCII (an
+    # inline `code` span, a latin word) is intentional and preserved.
+    return _CJK_JOINED_SPACE.sub("", collapsed)
 
 
 def _localized_text(
