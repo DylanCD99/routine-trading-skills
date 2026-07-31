@@ -31,6 +31,11 @@ DEFAULT_THRESHOLDS = {
     "alpha_t_stat_min": 2.0,
     "rolling_positive_fraction_min": 0.60,
 }
+# `positive_alpha_fraction` is only evidence of stability when it is measured
+# across many refits. With a handful of windows it is a coarse ratio that
+# clears any threshold trivially — one window makes it exactly 0.0 or 1.0 —
+# so the rolling check fails closed below this count.
+DEFAULT_MINIMUM_ROLLING_WINDOWS = 12
 ALLOWED_CONFIG_KEYS = {
     "schema_version",
     "date_column",
@@ -44,6 +49,7 @@ ALLOWED_CONFIG_KEYS = {
     "rolling_window",
     "minimum_observations",
     "minimum_regime_observations",
+    "minimum_rolling_windows",
     "hac_lags",
     "include_series",
     "thresholds",
@@ -506,12 +512,14 @@ def load_config(path: Path) -> dict[str, Any]:
 
     minimum_observations = raw.get("minimum_observations", 60)
     minimum_regime_observations = raw.get("minimum_regime_observations", 20)
+    minimum_rolling_windows = raw.get("minimum_rolling_windows", DEFAULT_MINIMUM_ROLLING_WINDOWS)
     rolling_window = raw.get(
         "rolling_window", {"daily": 63, "weekly": 52, "monthly": 24}[frequency]
     )
     for name, value, minimum in (
         ("minimum_observations", minimum_observations, 10),
         ("minimum_regime_observations", minimum_regime_observations, 2),
+        ("minimum_rolling_windows", minimum_rolling_windows, 2),
         ("rolling_window", rolling_window, 0),
     ):
         if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
@@ -581,6 +589,7 @@ def load_config(path: Path) -> dict[str, Any]:
         "regime_columns": regime_columns,
         "minimum_observations": minimum_observations,
         "minimum_regime_observations": minimum_regime_observations,
+        "minimum_rolling_windows": minimum_rolling_windows,
         "rolling_window": rolling_window,
         "hac_lags": hac_lags,
         "include_series": include_series,
@@ -695,8 +704,11 @@ def _declaration_warnings(config: dict[str, Any]) -> list[dict[str, str]]:
         warnings.append(
             {
                 "id": "UNIVERSE_PROVENANCE_UNKNOWN",
-                "severity": "medium",
-                "message": "Record whether same-universe baselines use point-in-time constituents.",
+                "severity": "high",
+                "message": (
+                    "Declare universe_data as point_in_time, current_constituents, or "
+                    "not_applicable; undeclared provenance cannot rule out survivorship bias."
+                ),
             }
         )
 
@@ -742,6 +754,7 @@ def _rolling_analysis(
     rolling_window: int,
     annualization_factor: int,
     hac_lags: int | None,
+    minimum_rolling_windows: int,
 ) -> dict[str, Any]:
     if rolling_window == 0:
         return {"enabled": False, "reason": "disabled"}
@@ -753,6 +766,19 @@ def _rolling_analysis(
         }
     if len(strategy_returns) < rolling_window:
         return {"enabled": False, "reason": "fewer observations than rolling_window"}
+    # Enough history to refit the window `minimum_rolling_windows` times, so the
+    # positive-alpha fraction is measured over a real span rather than one fit.
+    required_observations = rolling_window + minimum_rolling_windows - 1
+    if len(strategy_returns) < required_observations:
+        available = len(strategy_returns) - rolling_window + 1
+        return {
+            "enabled": False,
+            "reason": (
+                f"only {available} rolling windows fit in {len(strategy_returns)} observations; "
+                f"{minimum_rolling_windows} required "
+                f"(need at least {required_observations} observations for window {rolling_window})"
+            ),
+        }
 
     windows = []
     failed_windows = 0
@@ -877,6 +903,7 @@ def _analyze_model(
         config["rolling_window"],
         annualization,
         requested_lags,
+        config["minimum_rolling_windows"],
     )
 
     result = {

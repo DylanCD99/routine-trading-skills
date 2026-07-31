@@ -52,6 +52,12 @@ Choose the window before looking at the output.
 Rolling estimates overlap and are not independent tests. Use them to locate instability,
 not to multiply significance claims.
 
+Locating instability requires many refits. The analyzer therefore refuses to report
+rolling stability unless at least `minimum_rolling_windows` windows fit in the series,
+defaulting to 12. With one window the positive-alpha fraction is exactly 0.0 or 1.0 and
+carries no information about stability, so the model falls to `RESIDUAL_FRAGILE`
+instead.
+
 ## Regime breakdown
 
 Apply categorical regime labels supplied in the CSV to the primary model's active return,

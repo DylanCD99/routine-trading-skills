@@ -60,8 +60,18 @@ def _config(
     baseline_selection: str = "predeclared",
     sensitivity: bool = True,
     rolling_window: int = 40,
+    universe_data: str | None = "point_in_time",
+    minimum_rolling_windows: int | None = None,
 ) -> dict[str, object]:
-    return {
+    declarations: dict[str, object] = {
+        "baseline_selection": baseline_selection,
+        "strategy_return_basis": "net",
+        "baseline_return_basis": "net",
+        "analysis_scope": "out_of_sample",
+    }
+    if universe_data is not None:
+        declarations["universe_data"] = universe_data
+    config: dict[str, object] = {
         "schema_version": "1.0",
         "date_column": "date",
         "strategy_column": "strategy_return",
@@ -87,14 +97,11 @@ def _config(
         "minimum_regime_observations": 20,
         "hac_lags": "auto",
         "include_series": True,
-        "data_declarations": {
-            "baseline_selection": baseline_selection,
-            "strategy_return_basis": "net",
-            "baseline_return_basis": "net",
-            "analysis_scope": "out_of_sample",
-            "universe_data": "point_in_time",
-        },
+        "data_declarations": declarations,
     }
+    if minimum_rolling_windows is not None:
+        config["minimum_rolling_windows"] = minimum_rolling_windows
+    return config
 
 
 def _write_case(
@@ -190,6 +197,84 @@ def test_unavailable_rolling_analysis_fails_closed(tmp_path, analyzer_module, ro
         warning["id"] == "ROLLING_ANALYSIS_UNAVAILABLE" and warning["severity"] == "high"
         for warning in report["warnings"]
     )
+
+
+def test_single_rolling_window_fails_closed(tmp_path, analyzer_module):
+    """One refit makes positive_alpha_fraction 0.0 or 1.0, which is not stability evidence."""
+    csv_path, config_path = _write_case(
+        tmp_path,
+        _series(60),
+        _config(rolling_window=60, minimum_observations=60),
+    )
+
+    report = analyzer_module.analyze(csv_path, config_path)
+
+    for model in report["models"]:
+        assert model["rolling"]["enabled"] is False
+        assert "1 rolling windows" in model["rolling"]["reason"]
+        assert model["diagnostic_status"] == "RESIDUAL_FRAGILE"
+    assert report["verdict"]["status"] == "RESIDUAL_FRAGILE"
+    assert report["verdict"]["decision_grade"] is False
+    assert report["verdict"]["decision_eligibility"] == "REVIEW_REQUIRED"
+
+
+def test_rolling_window_count_boundary(tmp_path, analyzer_module):
+    """minimum_rolling_windows - 1 windows fails closed; exactly the minimum runs."""
+    window = 40
+    minimum = 5
+    (tmp_path / "short").mkdir()
+    (tmp_path / "exact").mkdir()
+
+    short_path, short_config = _write_case(
+        tmp_path / "short",
+        _series(window + minimum - 2),
+        _config(rolling_window=window, minimum_rolling_windows=minimum),
+    )
+    short_report = analyzer_module.analyze(short_path, short_config)
+    assert short_report["models"][0]["rolling"]["enabled"] is False
+    assert short_report["verdict"]["decision_eligibility"] == "REVIEW_REQUIRED"
+
+    exact_path, exact_config = _write_case(
+        tmp_path / "exact",
+        _series(window + minimum - 1),
+        _config(rolling_window=window, minimum_rolling_windows=minimum),
+    )
+    exact_report = analyzer_module.analyze(exact_path, exact_config)
+    assert exact_report["models"][0]["rolling"]["enabled"] is True
+    assert exact_report["models"][0]["rolling"]["window_count"] == minimum
+
+
+def test_minimum_rolling_windows_must_be_at_least_two(tmp_path, analyzer_module):
+    csv_path, config_path = _write_case(tmp_path, _series(140), _config(minimum_rolling_windows=1))
+
+    with pytest.raises(analyzer_module.AnalysisError, match="minimum_rolling_windows"):
+        analyzer_module.analyze(csv_path, config_path)
+
+
+def test_undeclared_universe_provenance_blocks_decision_grade(tmp_path, analyzer_module):
+    """`not_applicable` exists as an explicit value, so an absent declaration is undeclared."""
+    csv_path, config_path = _write_case(tmp_path, _series(140), _config(universe_data=None))
+
+    report = analyzer_module.analyze(csv_path, config_path)
+
+    assert any(
+        warning["id"] == "UNIVERSE_PROVENANCE_UNKNOWN" and warning["severity"] == "high"
+        for warning in report["warnings"]
+    )
+    assert report["verdict"]["decision_grade"] is False
+    assert report["verdict"]["decision_eligibility"] == "REVIEW_REQUIRED"
+
+
+def test_not_applicable_universe_stays_decision_grade(tmp_path, analyzer_module):
+    csv_path, config_path = _write_case(
+        tmp_path, _series(140), _config(universe_data="not_applicable")
+    )
+
+    report = analyzer_module.analyze(csv_path, config_path)
+
+    assert not any(warning["id"] == "UNIVERSE_PROVENANCE_UNKNOWN" for warning in report["warnings"])
+    assert report["verdict"]["decision_grade"] is True
+    assert report["verdict"]["decision_eligibility"] == "ELIGIBLE"
 
 
 def test_post_hoc_baseline_blocks_decision_grade(tmp_path, analyzer_module):

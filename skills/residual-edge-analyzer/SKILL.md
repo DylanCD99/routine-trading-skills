@@ -37,6 +37,11 @@ Record these declarations in the config:
 - `analysis_scope`: `out_of_sample`, `live`, or `in_sample`
 - `universe_data`: `point_in_time`, `current_constituents`, or `not_applicable`
 
+Every declaration is mandatory for a decision-grade verdict. Omitting one is treated as
+undeclared, not as benign, and drops the report to `REVIEW_REQUIRED`. `not_applicable`
+exists so that a baseline with no universe membership can be declared explicitly rather
+than left blank.
+
 Do not choose a baseline because it gives the preferred residual result.
 
 ### 2. Validate the return-series contract

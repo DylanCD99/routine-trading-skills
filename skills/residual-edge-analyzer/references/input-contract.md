@@ -46,6 +46,7 @@ returns at or below -100%.
   "rolling_window": 63,
   "minimum_observations": 60,
   "minimum_regime_observations": 20,
+  "minimum_rolling_windows": 12,
   "hac_lags": "auto",
   "include_series": true,
   "data_declarations": {
@@ -95,6 +96,18 @@ inspecting the result when comparing strategies.
 The evidence floor is the larger of `minimum_observations` and ten observations per
 estimated parameter, including the intercept. Falling below that floor produces
 `INSUFFICIENT_EVIDENCE`; it does not prevent exploratory metrics from being emitted.
+
+### Rolling coverage floor
+
+`minimum_rolling_windows` defaults to 12 and must be an integer of 2 or more. The
+rolling check needs `rolling_window + minimum_rolling_windows - 1` observations. Below
+that the rolling block reports `enabled: false` with the shortfall, and the model falls
+to `RESIDUAL_FRAGILE`.
+
+The floor exists because `positive_alpha_fraction` is only stability evidence when it is
+measured across many refits. With a single window it is exactly 0.0 or 1.0 and clears
+`rolling_positive_fraction_min` trivially, which would let a 60-observation series with
+`rolling_window: 60` reach `RESIDUAL_EDGE` on one regression.
 
 ## Outputs
 
