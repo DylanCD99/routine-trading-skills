@@ -56,7 +56,7 @@ their optimized `.set`.
 
 ## 2. When to Use
 
-- "Testea varios robots / bots / EAs en MetaTrader 5 por línea de comandos."
+- "Prueba robots / bots / EAs en MetaTrader 5."
 - Screen a folder of MT5 Expert Advisors and pick the best across all pairs.
 - Optimize EA parameters and decide finalists by profit/drawdown/consistency.
 - Resume an interrupted testing run.

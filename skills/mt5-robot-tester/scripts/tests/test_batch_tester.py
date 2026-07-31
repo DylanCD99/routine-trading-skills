@@ -111,14 +111,26 @@ def test_inputs_from_passes_ordered():
     names = [n for n, _ in inputs]
     assert names[0] == "MagicNumber"
     assert names[1] == "GannHiLoPeriod1"
-    strat = select_strategy_params(names, "MagicNumber", 6)
-    assert strat == [
+    strategy_params = select_strategy_params(names, "MagicNumber", 6)
+    assert strategy_params == [
         "GannHiLoPeriod1",
         "PriceEntryMult1",
         "StopLossCoef1",
         "TrailingStopCoef1",
         "TrailingActCef1",
     ]
+
+
+def test_find_terminal_prefers_environment_over_config(tmp_path, monkeypatch):
+    env_terminal = tmp_path / "env" / "terminal64.exe"
+    config_terminal = tmp_path / "config" / "terminal64.exe"
+    env_terminal.parent.mkdir()
+    config_terminal.parent.mkdir()
+    env_terminal.touch()
+    config_terminal.touch()
+    monkeypatch.setenv("MT5_TERMINAL_PATH", str(env_terminal))
+
+    assert batch.find_terminal(configured=str(config_terminal)) == env_terminal
 
 
 # --- finalist decision ---------------------------------------------------
@@ -142,14 +154,14 @@ def test_finalist_fails_without_improvement():
     final = {"net_profit": 45000, "drawdown_max_pct": 8.0}
     ok, reason = evaluate_finalist(final, r2_profit=50000, deposit=DEPOSIT, gates=GATES)
     assert ok is False
-    assert "no mejora" in reason
+    assert "does not improve" in reason
 
 
 def test_finalist_fails_below_4x():
     final = {"net_profit": 30000, "drawdown_max_pct": 8.0}
     ok, reason = evaluate_finalist(final, 20000, DEPOSIT, GATES)
     assert ok is False
-    assert "beneficio" in reason
+    assert "profit" in reason
 
 
 # --- round-2 profile -----------------------------------------------------
@@ -202,13 +214,13 @@ def test_round2_profile_fails_lr():
 
 
 def test_experts_relpath_under_experts():
-    p = r"C:\Users\x\AppData\Roaming\MetaQuotes\Terminal\ABC\MQL5\Experts\bots candidatos"
-    assert experts_relpath(p) == "bots candidatos"
+    p = r"C:\Users\x\AppData\Roaming\MetaQuotes\Terminal\ABC\MQL5\Experts\candidate bots"
+    assert experts_relpath(p) == "candidate bots"
 
 
 def test_experts_relpath_nested():
-    p = r"C:\MT5\MQL5\Experts\group\bots candidatos"
-    assert experts_relpath(p) == "group\\bots candidatos"
+    p = r"C:\MT5\MQL5\Experts\group\candidate bots"
+    assert experts_relpath(p) == "group\\candidate bots"
 
 
 def test_path_helpers_support_posix_paths(tmp_path):
@@ -227,7 +239,7 @@ def test_mt5_data_dir_supports_windows_paths_on_any_host():
 
 def test_backtest_ini_optimization_0_with_inputs(tmp_path):
     ini = build_backtest_ini(
-        "bots candidatos\\Bot.ex5",
+        "candidate bots\\Bot.ex5",
         "US100.cash",
         COMMON,
         tmp_path / "r2",
@@ -516,7 +528,9 @@ def test_main_stops_after_first_bot_when_terminal_exit_is_unconfirmed(tmp_path, 
         def poll(self):
             return None
 
-    monkeypatch.setattr(batch, "find_terminal", lambda _path: tmp_path / "terminal64.exe")
+    monkeypatch.setattr(
+        batch, "find_terminal", lambda _explicit, _configured: tmp_path / "terminal64.exe"
+    )
     monkeypatch.setattr(
         batch.subprocess,
         "Popen",
@@ -568,7 +582,9 @@ def test_fatal_blocker_survives_output_reporting_failure(tmp_path, monkeypatch, 
         def poll(self):
             return None
 
-    monkeypatch.setattr(batch, "find_terminal", lambda _path: tmp_path / "terminal64.exe")
+    monkeypatch.setattr(
+        batch, "find_terminal", lambda _explicit, _configured: tmp_path / "terminal64.exe"
+    )
     monkeypatch.setattr(batch.subprocess, "Popen", lambda _cmd: Proc())
     monkeypatch.setattr(batch, "terminate_child_process", lambda _proc: False)
 
@@ -582,7 +598,7 @@ def test_fatal_blocker_survives_output_reporting_failure(tmp_path, monkeypatch, 
 
     def maybe_fail_save(self):
         fatal = any(
-            "no se pudo confirmar cierre" in str(state.get("reason"))
+            "could not confirm termination" in str(state.get("reason"))
             for state in self.state["bots"].values()
         )
         if failing_write == "fatal_state" and fatal:
@@ -610,13 +626,13 @@ def test_fatal_blocker_survives_output_reporting_failure(tmp_path, monkeypatch, 
 
 
 def test_optimize_param_ini_range_syntax(tmp_path):
-    strat = [("GannHiLoPeriod1", 86), ("PriceEntryMult1", 1.5)]
+    strategy_params = [("GannHiLoPeriod1", 86), ("PriceEntryMult1", 1.5)]
     ini = build_optimize_param_ini(
-        "bots candidatos\\Bot.ex5",
+        "candidate bots\\Bot.ex5",
         "US100.cash",
         COMMON,
         tmp_path / "r3",
-        strat,
+        strategy_params,
         "GannHiLoPeriod1",
         (43, 4, 129),
     )
@@ -641,6 +657,24 @@ def _pipeline(tmp_path):
     }
     pipe = Pipeline(config, tmp_path / "output", None, 5, False, False)
     return pipe, candidates, in_testing, finalists
+
+
+def test_move_bot_reports_missing_folder_configuration_in_english(tmp_path):
+    pipe, candidates, _, _ = _pipeline(tmp_path)
+    bot = candidates / "Bot.ex5"
+
+    pipe.in_testing = None
+    assert pipe._move_bot(bot, "rejected", None) == (
+        False,
+        "missing folders.in_testing",
+    )
+
+    pipe.in_testing = tmp_path / "in-testing"
+    pipe.finalists = None
+    assert pipe._move_bot(bot, "finalist", []) == (
+        False,
+        "missing folders.finalists",
+    )
 
 
 def test_round1_rejection_moves_candidate_and_records_truth(tmp_path):

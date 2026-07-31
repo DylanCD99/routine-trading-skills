@@ -5,6 +5,8 @@ import sys
 import threading
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import dashboard as dashboard_module  # noqa: E402
@@ -35,7 +37,12 @@ def test_derive_rejected_and_phase_progression():
     assert derive_bot_view("B", {"round1": {}, "round2": {}})["phase"] == "R2"
     assert derive_bot_view("B", {})["phase"] == "pending"
     r = derive_bot_view(
-        "B", {"status": "done", "verdict": "rejected", "round1": {"reason": "R1: pocos positivos"}}
+        "B",
+        {
+            "status": "done",
+            "verdict": "rejected",
+            "round1": {"reason": "R1: too few profitable symbols"},
+        },
     )
     assert r["passed"] is False
     assert r["verdict"] == "rejected"
@@ -57,7 +64,7 @@ def test_build_status_reads_state_and_folders(tmp_path):
         '"B":{"status":"done","verdict":"rejected","round1":{}}}}',
         encoding="utf-8",
     )
-    (out / "run.log").write_text("linea1\nlinea2\n", encoding="utf-8")
+    (out / "run.log").write_text("line1\nline2\n", encoding="utf-8")
 
     config = {
         "folders": {
@@ -72,7 +79,7 @@ def test_build_status_reads_state_and_folders(tmp_path):
     assert s["summary"]["rejected"] == 1
     assert s["folders"]["candidates"] == ["A", "B"]
     assert s["folders"]["finalists"] == ["A"]
-    assert s["log_tail"] == ["linea1", "linea2"]
+    assert s["log_tail"] == ["line1", "line2"]
 
 
 def _dashboard(tmp_path):
@@ -253,3 +260,23 @@ def test_stop_reports_failure_when_process_tree_survives(tmp_path, monkeypatch):
 
     assert result["ok"] is False
     assert dash.proc is proc
+
+
+def test_taskkill_command_uses_resolved_executable(monkeypatch):
+    executable = r"C:\Windows\System32\taskkill.exe"
+    monkeypatch.setattr(dashboard_module.shutil, "which", lambda name: executable)
+
+    assert dashboard_module._taskkill_command(4321) == [
+        executable,
+        "/PID",
+        "4321",
+        "/T",
+        "/F",
+    ]
+
+
+def test_taskkill_command_fails_closed_when_unavailable(monkeypatch):
+    monkeypatch.setattr(dashboard_module.shutil, "which", lambda name: None)
+
+    with pytest.raises(FileNotFoundError, match="taskkill"):
+        dashboard_module._taskkill_command(4321)

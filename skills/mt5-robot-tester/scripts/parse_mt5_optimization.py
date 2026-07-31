@@ -153,10 +153,10 @@ def _gate_reason(passed, positive, min_positive, best_profit, threshold) -> str:
         return "ok"
     parts = []
     if positive < min_positive:
-        parts.append(f"solo {positive}/{min_positive} símbolos positivos")
+        parts.append(f"only {positive}/{min_positive} profitable symbols")
     if best_profit is None or best_profit < threshold:
-        parts.append(f"mejor beneficio {best_profit} < umbral {threshold:.0f}")
-    return "; ".join(parts) or "no cumple gate"
+        parts.append(f"best profit {best_profit} < threshold {threshold:.0f}")
+    return "; ".join(parts) or "gate not met"
 
 
 def _cli(argv: list[str] | None = None) -> int:
@@ -179,9 +179,9 @@ def _cli(argv: list[str] | None = None) -> int:
         print(json.dumps({"passes": passes, "gate": gate}, indent=2))
     else:
         print(
-            f"passes: {len(passes)} | positivos: {gate['positive_symbols']} "
-            f"| mejor: {gate['best_symbol']} ({gate['best_profit']}) "
-            f"| gate: {'PASA' if gate['passed'] else 'NO'} ({gate['reason']})"
+            f"passes: {len(passes)} | profitable: {gate['positive_symbols']} "
+            f"| best: {gate['best_symbol']} ({gate['best_profit']}) "
+            f"| gate: {'PASS' if gate['passed'] else 'FAIL'} ({gate['reason']})"
         )
     return 0
 

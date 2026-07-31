@@ -30,7 +30,7 @@ their optimized `.set`.
 
 ## When to Use
 
-- "Testea varios robots / bots / EAs en MetaTrader 5 por línea de comandos."
+- "Prueba robots / bots / EAs en MetaTrader 5."
 - Screen a folder of MT5 Expert Advisors and pick the best across all pairs.
 - Optimize EA parameters and decide finalists by profit/drawdown/consistency.
 - Resume an interrupted testing run.
@@ -178,4 +178,4 @@ selection converge faster each loop. Deterministic — plain aggregate statistic
    full year remain part of the configured test period.
 8. **Learn each loop**: parameter/symbol statistics bias future runs toward wins.
 9. **Verify against your build**: report layout (esp. the deals table) and the
-   32 ms delay mapping can differ — see the reference's *(verificar)* notes.
+   32 ms delay mapping can differ — see the reference's *(verify)* notes.

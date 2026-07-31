@@ -23,6 +23,7 @@ import hmac
 import json
 import os
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -44,14 +45,38 @@ except ImportError:  # pragma: no cover - import shim
 # Editable cut-off ("gate") parameters, exposed to the HTML settings panel.
 # Each: (section in config, key, python type, min, max, label).
 GATE_FIELDS = [
-    ("gates", "round1_min_positive", int, 1, 200,
-     "Ronda 1 — mínimo de pares con beneficio positivo"),
-    ("gates", "round1_min_profit_multiple", float, 0.0, 100.0,
-     "Ronda 1 — beneficio mínimo del mejor par (x depósito)"),
-    ("gates", "finalist_min_profit_multiple", float, 0.0, 100.0,
-     "Ronda 3 / Finalista — beneficio mínimo (x depósito)"),
-    ("gates", "finalist_max_drawdown_pct", float, 0.1, 100.0,
-     "Ronda 3 / Finalista — drawdown máximo (%)"),
+    (
+        "gates",
+        "round1_min_positive",
+        int,
+        1,
+        200,
+        "Round 1 — minimum profitable symbols",
+    ),
+    (
+        "gates",
+        "round1_min_profit_multiple",
+        float,
+        0.0,
+        100.0,
+        "Round 1 — minimum best-symbol profit (deposit multiple)",
+    ),
+    (
+        "gates",
+        "finalist_min_profit_multiple",
+        float,
+        0.0,
+        100.0,
+        "Round 3 / finalist — minimum profit (deposit multiple)",
+    ),
+    (
+        "gates",
+        "finalist_max_drawdown_pct",
+        float,
+        0.1,
+        100.0,
+        "Round 3 / finalist — maximum drawdown (%)",
+    ),
 ]
 _GATE_KEYS = {key for _, key, *_ in GATE_FIELDS}
 
@@ -145,18 +170,24 @@ def build_status(config: dict, output_dir: Path, running: bool) -> dict:
 
 # --- editable gate parameters ---------------------------------------------
 
+
 def get_gates(config: dict) -> dict:
     """Current gate values (config overrides merged onto the pipeline defaults),
     annotated with metadata for the settings panel."""
     merged = {**DEFAULTS["gates"], **config.get("gates", {})}
     fields = []
     for section, key, typ, lo, hi, label in GATE_FIELDS:
-        fields.append({
-            "section": section, "key": key, "label": label,
-            "type": "int" if typ is int else "float",
-            "min": lo, "max": hi,
-            "value": merged.get(key),
-        })
+        fields.append(
+            {
+                "section": section,
+                "key": key,
+                "label": label,
+                "type": "int" if typ is int else "float",
+                "min": lo,
+                "max": hi,
+                "value": merged.get(key),
+            }
+        )
     return {"fields": fields}
 
 
@@ -170,14 +201,14 @@ def apply_gate_updates(config: dict, updates: dict) -> dict:
     gates = dict(config.get("gates", {}))
     for key, raw in updates.items():
         if key not in _GATE_KEYS:
-            raise ValueError(f"parámetro desconocido: {key}")
+            raise ValueError(f"unknown parameter: {key}")
         typ, lo, hi, label = field_by_key[key]
         try:
             value = typ(raw)
         except (TypeError, ValueError):
-            raise ValueError(f"{label}: valor no numérico ({raw!r})") from None
+            raise ValueError(f"{label}: value must be numeric ({raw!r})") from None
         if not (lo <= value <= hi):
-            raise ValueError(f"{label}: {value} fuera de rango [{lo}, {hi}]")
+            raise ValueError(f"{label}: {value} out of range [{lo}, {hi}]")
         gates[key] = value
     new_config["gates"] = gates
     return new_config
@@ -192,6 +223,14 @@ def save_config_atomic(path: Path, config: dict) -> None:
 # --- server ---------------------------------------------------------------
 
 
+def _taskkill_command(pid: int) -> list[str]:
+    """Build a Windows process-tree command using a resolved executable path."""
+    executable = shutil.which("taskkill")
+    if executable is None:
+        raise FileNotFoundError("taskkill executable was not found on PATH")
+    return [executable, "/PID", str(pid), "/T", "/F"]
+
+
 def terminate_process_tree(proc: subprocess.Popen, timeout: float = 15) -> bool:
     """Stop the exact process tree started by this dashboard and confirm exit."""
     if proc.poll() is not None:
@@ -199,7 +238,7 @@ def terminate_process_tree(proc: subprocess.Popen, timeout: float = 15) -> bool:
     try:
         if sys.platform == "win32":
             subprocess.run(
-                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                _taskkill_command(proc.pid),
                 check=False,
                 capture_output=True,
                 text=True,
@@ -214,7 +253,7 @@ def terminate_process_tree(proc: subprocess.Popen, timeout: float = 15) -> bool:
         try:
             if sys.platform == "win32":
                 subprocess.run(
-                    ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                    _taskkill_command(proc.pid),
                     check=False,
                     capture_output=True,
                     text=True,
@@ -249,7 +288,7 @@ class Dashboard:
     def start(self) -> dict:
         with self.lock:
             if self.is_running():
-                return {"ok": False, "message": "Ya está en ejecución"}
+                return {"ok": False, "message": "Pipeline is already running"}
             cmd = [
                 sys.executable,
                 str(_PIPELINE),
@@ -267,21 +306,21 @@ class Dashboard:
             try:
                 self.proc = subprocess.Popen(cmd, **kwargs)
             except OSError as exc:
-                return {"ok": False, "message": f"No se pudo iniciar: {exc}"}
-            return {"ok": True, "message": "Pipeline lanzado", "pid": self.proc.pid}
+                return {"ok": False, "message": f"Could not start pipeline: {exc}"}
+            return {"ok": True, "message": "Pipeline started", "pid": self.proc.pid}
 
     def stop(self) -> dict:
         with self.lock:
             if not self.is_running():
-                return {"ok": False, "message": "No está en ejecución"}
+                return {"ok": False, "message": "Pipeline is not running"}
             proc = self.proc
             if not terminate_process_tree(proc):
                 return {
                     "ok": False,
-                    "message": "No se pudo confirmar la detención del proceso",
+                    "message": "Could not confirm that the process tree stopped",
                 }
             self.proc = None
-            return {"ok": True, "message": "Pipeline detenido"}
+            return {"ok": True, "message": "Pipeline stopped"}
 
     def status(self) -> dict:
         # Reload config each poll so folder edits are reflected.
@@ -297,15 +336,17 @@ class Dashboard:
     def update_gates(self, updates: dict) -> dict:
         with self.lock:
             if self.is_running():
-                return {"ok": False,
-                        "message": "No se puede cambiar mientras el pipeline corre"}
+                return {
+                    "ok": False,
+                    "message": "Gate parameters cannot be changed while the pipeline is running",
+                }
             try:
                 new_config = apply_gate_updates(self.config, updates)
             except ValueError as e:
                 return {"ok": False, "message": str(e)}
             save_config_atomic(self.config_path, new_config)
             self.config = new_config
-            return {"ok": True, "message": "Parámetros guardados", **get_gates(self.config)}
+            return {"ok": True, "message": "Gate parameters saved", **get_gates(self.config)}
 
 
 def make_handler(dash: Dashboard):
@@ -344,7 +385,7 @@ def make_handler(dash: Dashboard):
                         "__CSRF_TOKEN__", dash.csrf_token
                     )
                 except OSError:
-                    html = "<h1>dashboard.html no encontrado</h1>"
+                    html = "<h1>dashboard.html not found</h1>"
                 self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
             elif self.path == "/api/status":
                 self._json(dash.status())
@@ -370,7 +411,7 @@ def make_handler(dash: Dashboard):
                 try:
                     updates = json.loads(raw or b"{}")
                 except json.JSONDecodeError:
-                    self._json({"ok": False, "message": "JSON inválido"}, 400)
+                    self._json({"ok": False, "message": "Invalid JSON"}, 400)
                     return
                 self._json(dash.update_gates(updates))
 
@@ -381,7 +422,7 @@ def make_handler(dash: Dashboard):
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Panel de control local del pipeline MT5.")
+    parser = argparse.ArgumentParser(description="Local control panel for the MT5 pipeline.")
     parser.add_argument("--config", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--port", type=int, default=8765)
@@ -392,7 +433,7 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     if not config_path.exists():
-        print(f"error: config no encontrada: {config_path}", file=sys.stderr)
+        print(f"error: config not found: {config_path}", file=sys.stderr)
         return 1
 
     dash = Dashboard(config_path, output_dir)
@@ -400,13 +441,13 @@ def main(argv: list[str] | None = None) -> int:
     port = server.server_address[1]
     dash.configure_server(port)
     url = f"http://127.0.0.1:{port}/"
-    print(f"Panel de control en {url}  (Ctrl+C para salir)")
+    print(f"Control panel available at {url}  (Ctrl+C to exit)")
     if not args.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nCerrando…")
+        print("\nShutting down…")
     finally:
         if dash.is_running():
             result = dash.stop()

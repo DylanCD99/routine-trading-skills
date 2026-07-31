@@ -61,7 +61,7 @@ DEFAULTS = {
         "currency": "USD",
         "leverage": 100,
         "delay_ms": 32,
-        "optimization_criterion": 0,  # Rentabilidad máxima (max balance)
+        "optimization_criterion": 0,  # Maximum profitability (maximum balance)
     },
     "gates": {
         "round1_min_positive": 5,
@@ -95,7 +95,7 @@ class TerminalTerminationError(RuntimeError):
     def __init__(self, pid: int, context: str):
         self.pid = pid
         self.context = context
-        super().__init__(f"no se pudo confirmar cierre de MT5 PID {pid} ({context})")
+        super().__init__(f"could not confirm termination of MT5 PID {pid} ({context})")
 
 
 # ----------------------------------------------------------------------------
@@ -195,11 +195,10 @@ def evaluate_finalist(
     if gates.get("finalist_require_improvement", True):
         improved = profit is not None and r2_profit is not None and profit > r2_profit
         if not improved:
-            reasons.append(f"no mejora R2 ({profit} <= {r2_profit})")
+            reasons.append(f"does not improve on R2 ({profit} <= {r2_profit})")
     if profit is None or profit < profit_threshold:
         reasons.append(
-            f"beneficio {profit} < {profit_threshold:.0f} (≥"
-            f"{gates['finalist_min_profit_multiple']}x)"
+            f"profit {profit} < {profit_threshold:.0f} (≥{gates['finalist_min_profit_multiple']}x)"
         )
     if dd is None or dd > dd_limit:
         reasons.append(f"DD {dd}% > {dd_limit}%")
@@ -337,12 +336,14 @@ def _fmt_input(value) -> str:
 # ----------------------------------------------------------------------------
 
 
-def find_terminal(explicit: str | None = None) -> Path | None:
+def find_terminal(explicit: str | None = None, configured: str | None = None) -> Path | None:
     candidates: list[Path] = []
     if explicit:
         candidates.append(Path(explicit))
     if os.environ.get("MT5_TERMINAL_PATH"):
         candidates.append(Path(os.environ["MT5_TERMINAL_PATH"]))
+    if configured:
+        candidates.append(Path(configured))
     for base in (
         os.environ.get("ProgramFiles", r"C:\Program Files"),
         os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
@@ -640,7 +641,7 @@ class Pipeline:
         """Move the report (and its .png graph) from the data folder to output."""
         dest = self.reports_dir / f"{name}__{stub}{src.suffix}"
         if dest.exists():
-            self.log(f"[{name}] aviso: report destino ya existe: {dest}")
+            self.log(f"[{name}] warning: destination report already exists: {dest}")
             return src
         try:
             self._move_exclusive(src, dest)
@@ -650,7 +651,7 @@ class Pipeline:
         if png.exists():
             png_dest = self.reports_dir / f"{name}__{stub}.png"
             if png_dest.exists():
-                self.log(f"[{name}] aviso: gráfico destino ya existe: {png_dest}")
+                self.log(f"[{name}] warning: destination chart already exists: {png_dest}")
                 return dest
             try:
                 self._move_exclusive(png, png_dest)
@@ -679,7 +680,7 @@ class Pipeline:
         fingerprint = self._execution_fingerprint(name, ex5)
         existing = self.state["bots"].get(name)
         if existing is not None and existing.get("fingerprint") != fingerprint:
-            self.log(f"[{name}] inputs/config cambiaron; reinicia el estado de este bot")
+            self.log(f"[{name}] inputs or config changed; resetting this bot's state")
             existing = None
         if existing is None:
             existing = {"status": "pending", "fingerprint": fingerprint}
@@ -687,7 +688,7 @@ class Pipeline:
             self._save_state()
         st = existing
         if self.resume and st.get("status") == "done":
-            self.log(f"[{name}] ya completado ({st.get('verdict')}), se omite")
+            self.log(f"[{name}] already completed ({st.get('verdict')}); skipping")
             return st
 
         expert = self.expert_path(ex5)
@@ -699,7 +700,7 @@ class Pipeline:
             symbols = self._round1_symbols()
             if not symbols:
                 return self._finish(
-                    name, "error", "R1: falta lista de símbolos (config common.symbols)", st
+                    name, "error", "R1: missing symbol list (config common.symbols)", st
                 )
             # Resume mid-Round-1: reuse symbols already backtested.
             passes = [
@@ -709,7 +710,7 @@ class Pipeline:
             ]
             done = {p["symbol"] for p in passes}
             if not passes:
-                self.log(f"[{name}] Ronda 1: backtests en {len(symbols)} símbolos")
+                self.log(f"[{name}] Round 1: backtests across {len(symbols)} symbols")
             for i, sym in enumerate(symbols, 1):
                 if sym in done:
                     continue
@@ -770,7 +771,7 @@ class Pipeline:
 
         # --- Round 2 -------------------------------------------------------
         if "round2" not in st:
-            self.log(f"[{name}] Ronda 2: backtest en {best_symbol}")
+            self.log(f"[{name}] Round 2: backtest on {best_symbol}")
             rname = self.report_name(name, "R2")
             ini = build_backtest_ini(
                 expert,
@@ -818,7 +819,7 @@ class Pipeline:
                 st["round3"] = round3
                 st.pop("round3_error", None)
             else:
-                self.log(f"[{name}] R3 omitida (sin .set de inputs); veredicto por R2")
+                self.log(f"[{name}] R3 skipped (no input .set); verdict based on R2")
                 st["round3"] = {
                     "status": "ok",
                     "per_param": [],
@@ -839,25 +840,25 @@ class Pipeline:
     def _round3(self, name: str, expert: str, symbol: str, st: dict) -> dict:
         ordered = [(n, v) for n, v in st.get("inputs", [])]
         ordered_names = [n for n, _ in ordered]
-        strat_names = select_strategy_params(
+        strategy_names = select_strategy_params(
             ordered_names, self.r3["magic_param_name"], self.r3["params_after_magic"]
         )
         if self.r3.get("use_learned_order", True):
-            strat_names = self.learn.param_priority_order(strat_names)
+            strategy_names = self.learn.param_priority_order(strategy_names)
 
         # Working values: start from discovered defaults.
         values = dict(ordered)
         best_profit = st["round2"].get("net_profit")
         per_param = []
 
-        for target in strat_names:
+        for target in strategy_names:
             v = values.get(target)
             if not isinstance(v, (int, float)):
                 continue
             rng = compute_range(v, self.r3["range_pct"], self.r3["step_pct"])
             if rng is None:
                 continue
-            self.log(f"[{name}] R3 optimiza {target} en {rng}")
+            self.log(f"[{name}] R3 optimizes {target} over {rng}")
             cur_inputs = [(n, values[n]) for n in ordered_names]
             rname = self.report_name(name, f"R3_{target}")
             ini = build_optimize_param_ini(
@@ -904,7 +905,7 @@ class Pipeline:
 
         # Final backtest with exactly the same complete input set we will save.
         final_metrics = {}
-        self.log(f"[{name}] R3 backtest final optimizado en {symbol}")
+        self.log(f"[{name}] R3 final optimized backtest on {symbol}")
         rname = self.report_name(name, "final")
         ini = build_backtest_ini(expert, symbol, self.common, rname, inputs=best_set)
         report, status, _ = self._run(ini, name, "final", rname, (".htm", ".html", ".xml"))
@@ -946,7 +947,7 @@ class Pipeline:
             if not moved:
                 st["status"] = "move_error"
                 st["move_error"] = move_error
-                self.log(f"[{name}] ERROR de movimiento: {move_error}")
+                self.log(f"[{name}] MOVE ERROR: {move_error}")
                 self._save_state()
                 return st
         st["status"] = "done"
@@ -995,21 +996,21 @@ class Pipeline:
     def _move_bot(self, ex5: Path, verdict: str, optimized_set: list | None) -> tuple[bool, str]:
         """Copy/move one bot fail-closed, without overwriting user files."""
         if self.in_testing is None:
-            return False, "falta folders.in_testing"
+            return False, "missing folders.in_testing"
         in_testing_dest = self.in_testing / ex5.name
         if in_testing_dest.exists():
-            return False, f"destino existente: {in_testing_dest}"
+            return False, f"destination already exists: {in_testing_dest}"
 
         finalist_dest = None
         finalist_set = None
         if verdict == "finalist":
             if self.finalists is None:
-                return False, "falta folders.finalists"
+                return False, "missing folders.finalists"
             finalist_dest = self.finalists / ex5.name
             finalist_set = self.finalists / f"{ex5.stem}.set" if optimized_set else None
             for destination in (finalist_dest, finalist_set):
                 if destination is not None and destination.exists():
-                    return False, f"destino existente: {destination}"
+                    return False, f"destination already exists: {destination}"
 
         created: list[Path] = []
         try:
@@ -1099,10 +1100,10 @@ class Pipeline:
         lines = [
             "# MT5 Robot Tester — Leaderboard",
             "",
-            f"Generado: {dt.datetime.now():%Y-%m-%d %H:%M:%S}",
+            f"Generated: {dt.datetime.now():%Y-%m-%d %H:%M:%S}",
             "",
-            "| # | Bot | Veredicto | Mejor par | Bº R2 | Bº final | DD final % | LR | Motivo |",
-            "|---|-----|-----------|-----------|------:|---------:|-----------:|---:|--------|",
+            "| # | Bot | Verdict | Best symbol | R2 profit | Final profit | Final DD % | LR | Reason |",
+            "|---|-----|---------|-------------|----------:|-------------:|-----------:|---:|--------|",
         ]
         for i, r in enumerate(rows, 1):
             lines.append(
@@ -1225,17 +1226,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--config", help="JSON de configuración del pipeline.")
-    parser.add_argument("--candidates-dir", help="Carpeta de bots candidatos (override).")
+    parser.add_argument("--config", help="Pipeline configuration JSON.")
+    parser.add_argument("--candidates-dir", help="Override the candidate-bot folder.")
     parser.add_argument("--output-dir", default="reports/mt5_pipeline")
     parser.add_argument("--terminal-path", default=None)
     parser.add_argument("--timeout", type=int, default=None)
     parser.add_argument("--portable", action="store_true")
     parser.add_argument(
-        "--resume", action="store_true", help="Continuar desde state.json sin repetir lo hecho."
+        "--resume", action="store_true", help="Resume from state.json without repeating work."
     )
     parser.add_argument(
-        "--dry-run", action="store_true", help="Genera los .ini de la Ronda 1 sin lanzar MT5."
+        "--dry-run", action="store_true", help="Generate Round 1 INIs without launching MT5."
     )
     args = parser.parse_args(argv)
 
@@ -1246,13 +1247,13 @@ def main(argv: list[str] | None = None) -> int:
     candidates = config.get("folders", {}).get("candidates")
     if not candidates:
         print(
-            "error: falta la carpeta de candidatos (config folders.candidates o --candidates-dir)",
+            "error: candidate folder is required (config folders.candidates or --candidates-dir)",
             file=sys.stderr,
         )
         return 1
     candidates_dir = Path(candidates)
     if not candidates_dir.exists():
-        print(f"error: no existe la carpeta de candidatos: {candidates_dir}", file=sys.stderr)
+        print(f"error: candidate folder does not exist: {candidates_dir}", file=sys.stderr)
         return 1
 
     output_dir = Path(args.output_dir)
@@ -1261,7 +1262,7 @@ def main(argv: list[str] | None = None) -> int:
 
     bots = discover_bots(candidates_dir)
     if not bots:
-        print(f"error: no hay .ex5/.mq5 en {candidates_dir}", file=sys.stderr)
+        print(f"error: no .ex5/.mq5 files found in {candidates_dir}", file=sys.stderr)
         return 1
 
     common = {**DEFAULTS["common"], **config.get("common", {})}
@@ -1271,7 +1272,7 @@ def main(argv: list[str] | None = None) -> int:
         symbols = common.get("symbols")
         if not symbols:
             print(
-                "error: falta common.symbols para generar los backtests de Ronda 1",
+                "error: common.symbols is required to generate Round 1 backtests",
                 file=sys.stderr,
             )
             return 1
@@ -1287,15 +1288,15 @@ def main(argv: list[str] | None = None) -> int:
                 ini = build_backtest_ini(expert, str(symbol), common, report_name)
                 (ini_dir / f"{ex5.stem}__R1_{token}.ini").write_text(ini, encoding="utf-8")
         count = len(bots) * len(symbols)
-        print(f"[dry-run] {count} INIs de Ronda 1 en {ini_dir}")
-        print("Las Rondas 2/3 dependen de resultados reales; ejecuta sin --dry-run.")
+        print(f"[dry-run] {count} Round 1 INIs in {ini_dir}")
+        print("Rounds 2 and 3 require real results; rerun without --dry-run.")
         return 0
 
-    terminal = find_terminal(args.terminal_path or config.get("terminal_path"))
+    terminal = find_terminal(args.terminal_path, config.get("terminal_path"))
     if terminal is None:
         print(
-            "error: no se encontró terminal64.exe. Usa --terminal-path, "
-            "$MT5_TERMINAL_PATH o config.terminal_path.",
+            "error: terminal64.exe was not found. Use --terminal-path, "
+            "$MT5_TERMINAL_PATH, or config.terminal_path.",
             file=sys.stderr,
         )
         return 1
@@ -1306,9 +1307,9 @@ def main(argv: list[str] | None = None) -> int:
     lock_handle = acquire_lock(lock)
     if lock_handle is None:
         blocker = lock_blocker_path(lock)
-        detail = f" Verifica MT5 y elimina manualmente {blocker}." if blocker.exists() else ""
+        detail = f" Verify MT5 and remove {blocker} manually." if blocker.exists() else ""
         print(
-            f"error: data folder MT5 bloqueado (lock {lock}).{detail}",
+            f"error: MT5 data folder is locked ({lock}).{detail}",
             file=sys.stderr,
         )
         return 1
@@ -1317,7 +1318,7 @@ def main(argv: list[str] | None = None) -> int:
         pipe = Pipeline(config, output_dir, terminal, timeout, args.portable, args.resume)
         pipe.learn.bump_run()
         pipe.log(f"Terminal: {terminal}")
-        pipe.log(f"Candidatos: {candidates_dir} ({len(bots)} bots)")
+        pipe.log(f"Candidates: {candidates_dir} ({len(bots)} bots)")
 
         for ex5 in bots:
             try:
@@ -1339,7 +1340,7 @@ def main(argv: list[str] | None = None) -> int:
                     pass
                 raise
             except Exception as e:  # keep the loop resilient; record and continue
-                pipe.log(f"[{ex5.stem}] ERROR inesperado: {e}")
+                pipe.log(f"[{ex5.stem}] UNEXPECTED ERROR: {e}")
                 st = pipe.state["bots"].setdefault(ex5.stem, {})
                 st.update({"status": "error", "verdict": "error", "reason": str(e)})
                 pipe._save_state()
@@ -1353,7 +1354,7 @@ def main(argv: list[str] | None = None) -> int:
         if not blocker.exists():
             blocker = block_lock(lock, error)
         print(
-            f"error fatal: {error}. Reejecución bloqueada hasta verificar MT5; {blocker}",
+            f"fatal error: {error}. Rerun blocked until MT5 is verified; {blocker}",
             file=sys.stderr,
         )
         return 2

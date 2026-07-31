@@ -138,17 +138,17 @@ class Learnings:
         lines = [
             "# MT5 Robot Tester — Learnings",
             "",
-            "Almacén de aprendizaje acumulado entre ejecuciones. El orquestador lo",
-            "lee para **ordenar la optimización de parámetros por impacto histórico**",
-            "y como prior de símbolos; se actualiza tras cada bot.",
+            "Accumulated learning store across runs. The orchestrator uses it to",
+            "**order parameter optimization by historical impact** and as a symbol",
+            "prior. It is updated after every bot.",
             "",
-            f"- Ejecuciones acumuladas: **{d.get('runs', 0)}**",
-            f"- Última actualización: {d.get('updated')}",
+            f"- Accumulated runs: **{d.get('runs', 0)}**",
+            f"- Last updated: {d.get('updated')}",
             "",
-            "## Parámetros por impacto medio (Δ beneficio al optimizar)",
+            "## Parameters by average impact (profit delta after optimization)",
             "",
-            "| Parámetro | Optimizado (veces) | Mejoró (veces) | Δ medio |",
-            "|-----------|-------------------:|---------------:|--------:|",
+            "| Parameter | Optimized runs | Improved runs | Average delta |",
+            "|-----------|---------------:|--------------:|--------------:|",
         ]
         params = sorted(
             d["parameters"].items(),
@@ -158,14 +158,14 @@ class Learnings:
             avg = p["improvement_sum"] / max(p["opt_count"], 1)
             lines.append(f"| {name} | {p['opt_count']} | {p['improved_count']} | {avg:,.2f} |")
         if not params:
-            lines.append("| _(sin datos aún)_ | | | |")
+            lines.append("| _(no data yet)_ | | | |")
 
         lines += [
             "",
-            "## Símbolos (frecuencia como mejor par / beneficio medio)",
+            "## Symbols (best-symbol frequency / average profit)",
             "",
-            "| Símbolo | Mejor par (veces) | Beneficio medio |",
-            "|---------|------------------:|----------------:|",
+            "| Symbol | Best-symbol runs | Average profit |",
+            "|--------|-----------------:|---------------:|",
         ]
         syms = sorted(d["symbols"].items(), key=lambda kv: -kv[1].get("best_pair_count", 0))
         for sym, s in syms:
@@ -173,14 +173,14 @@ class Learnings:
             avg_s = f"{avg:,.2f}" if avg is not None else "—"
             lines.append(f"| {sym} | {s.get('best_pair_count', 0)} | {avg_s} |")
         if not syms:
-            lines.append("| _(sin datos aún)_ | | |")
+            lines.append("| _(no data yet)_ | | |")
 
         lines += [
             "",
-            "## Veredictos por bot",
+            "## Verdicts by bot",
             "",
-            "| Bot | Veredicto | Motivo | Visto |",
-            "|-----|-----------|--------|-------|",
+            "| Bot | Verdict | Reason | Last seen |",
+            "|-----|---------|--------|-----------|",
         ]
         for bot, b in sorted(d["bots"].items()):
             lines.append(
@@ -188,7 +188,7 @@ class Learnings:
                 f"| {b.get('last_seen', '')} |"
             )
         if not d["bots"]:
-            lines.append("| _(sin datos aún)_ | | | |")
+            lines.append("| _(no data yet)_ | | | |")
         lines.append("")
         return "\n".join(lines)
 

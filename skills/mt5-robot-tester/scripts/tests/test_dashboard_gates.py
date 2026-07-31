@@ -1,7 +1,10 @@
 """Tests for the editable gate-parameter settings panel (dashboard backend)."""
+
 import json
 import sys
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -28,35 +31,27 @@ def test_get_gates_reflects_config_overrides():
 
 def test_apply_gate_updates_valid():
     config = {"gates": {"round1_min_positive": 5}}
-    new_config = apply_gate_updates(config, {"round1_min_positive": 7,
-                                             "finalist_max_drawdown_pct": 10.0})
+    new_config = apply_gate_updates(
+        config, {"round1_min_positive": 7, "finalist_max_drawdown_pct": 10.0}
+    )
     assert new_config["gates"]["round1_min_positive"] == 7
     assert new_config["gates"]["finalist_max_drawdown_pct"] == 10.0
     assert isinstance(new_config["gates"]["round1_min_positive"], int)
 
 
 def test_apply_gate_updates_rejects_unknown_key():
-    try:
+    with pytest.raises(ValueError, match="unknown parameter"):
         apply_gate_updates({}, {"not_a_real_field": 1})
-        assert False, "should have raised"
-    except ValueError as e:
-        assert "desconocido" in str(e)
 
 
 def test_apply_gate_updates_rejects_out_of_range():
-    try:
+    with pytest.raises(ValueError, match="out of range"):
         apply_gate_updates({}, {"finalist_max_drawdown_pct": 500})
-        assert False, "should have raised"
-    except ValueError as e:
-        assert "rango" in str(e)
 
 
 def test_apply_gate_updates_rejects_non_numeric():
-    try:
+    with pytest.raises(ValueError, match="numeric"):
         apply_gate_updates({}, {"round1_min_positive": "abc"})
-        assert False, "should have raised"
-    except ValueError as e:
-        assert "no numérico" in str(e)
 
 
 def test_save_config_atomic_round_trip(tmp_path):
@@ -83,4 +78,11 @@ def test_dashboard_update_gates_blocked_while_running(tmp_path, monkeypatch):
     monkeypatch.setattr(dash, "is_running", lambda: True)
     result = dash.update_gates({"round1_min_positive": 6})
     assert result["ok"] is False
-    assert "corre" in result["message"]
+    assert "running" in result["message"]
+
+
+def test_gate_save_request_includes_csrf_token():
+    html = (Path(__file__).resolve().parents[2] / "assets" / "dashboard.html").read_text(
+        encoding="utf-8"
+    )
+    assert "'Content-Type':'application/json','X-CSRF-Token':csrfToken" in html

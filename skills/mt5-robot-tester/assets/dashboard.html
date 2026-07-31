@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MT5 Robot Tester — Panel</title>
+<title>MT5 Robot Tester — Dashboard</title>
 <style>
   :root{
     --bg:#0f1420; --panel:#161c2b; --panel2:#1d2536; --line:#2a3346;
@@ -73,55 +73,55 @@
 <body>
 <header>
   <h1>🤖 MT5 Robot Tester</h1>
-  <span id="run" class="dot run-idle" title="estado"></span>
+  <span id="run" class="dot run-idle" title="status"></span>
   <span id="runlabel" class="muted">—</span>
   <span class="spacer"></span>
-  <button id="go" class="btn-go">▶ Lanzar</button>
-  <button id="stop" class="btn-stop" disabled>■ Detener</button>
+  <button id="go" class="btn-go">▶ Start</button>
+  <button id="stop" class="btn-stop" disabled>■ Stop</button>
 </header>
 <main>
-  <div class="warn">⚠️ Cierra MetaTrader 5 antes de lanzar — el probador necesita la carpeta de datos en exclusiva.</div>
+  <div class="warn">⚠️ Close MetaTrader 5 before starting — the tester needs exclusive access to the data folder.</div>
 
   <div class="cards">
-    <div class="card"><div class="n" id="c-cand">–</div><div class="l">Candidatos pendientes</div></div>
-    <div class="card"><div class="n" id="c-tested">–</div><div class="l">Bots testeados</div></div>
-    <div class="card"><div class="n" style="color:var(--green)" id="c-fin">–</div><div class="l">Finalistas (pasaron)</div></div>
-    <div class="card"><div class="n" style="color:var(--red)" id="c-rej">–</div><div class="l">Rechazados</div></div>
+    <div class="card"><div class="n" id="c-cand">–</div><div class="l">Pending candidates</div></div>
+    <div class="card"><div class="n" id="c-tested">–</div><div class="l">Bots tested</div></div>
+    <div class="card"><div class="n" style="color:var(--green)" id="c-fin">–</div><div class="l">Finalists</div></div>
+    <div class="card"><div class="n" style="color:var(--red)" id="c-rej">–</div><div class="l">Rejected</div></div>
   </div>
 
   <section class="settings">
-    <h2>Parámetros de corte <span id="settings-lock" class="muted"></span></h2>
+    <h2>Gate parameters <span id="settings-lock" class="muted"></span></h2>
     <div class="gate-grid" id="gates">
-      <div class="muted">Cargando…</div>
+      <div class="muted">Loading…</div>
     </div>
     <div style="margin-top:10px; display:flex; align-items:center; gap:10px;">
-      <button id="save-gates" class="btn-go">💾 Guardar</button>
+      <button id="save-gates" class="btn-go">💾 Save</button>
       <span id="gates-msg" class="muted"></span>
     </div>
   </section>
 
   <div class="cols">
-    <div class="folder"><h3>📥 Candidatos <span id="f-cand-n" class="muted">0</span></h3><ul id="f-cand"></ul></div>
-    <div class="folder"><h3>🧪 En testeo <span id="f-test-n" class="muted">0</span></h3><ul id="f-test"></ul></div>
-    <div class="folder"><h3>🏆 Finalistas <span id="f-fin-n" class="muted">0</span></h3><ul id="f-fin"></ul></div>
+    <div class="folder"><h3>📥 Candidates <span id="f-cand-n" class="muted">0</span></h3><ul id="f-cand"></ul></div>
+    <div class="folder"><h3>🧪 In testing <span id="f-test-n" class="muted">0</span></h3><ul id="f-test"></ul></div>
+    <div class="folder"><h3>🏆 Finalists <span id="f-fin-n" class="muted">0</span></h3><ul id="f-fin"></ul></div>
   </div>
 
   <section>
-    <h2>Estado por bot</h2>
+    <h2>Status by bot</h2>
     <div class="tbl-wrap">
       <table>
         <thead><tr>
-          <th>Bot</th><th>Fase</th><th>Veredicto</th><th>Mejor par</th>
-          <th class="num">Bº R2</th><th class="num">Bº final</th><th class="num">DD %</th>
-          <th class="num">LR</th><th>Motivo</th>
+          <th>Bot</th><th>Phase</th><th>Verdict</th><th>Best symbol</th>
+          <th class="num">R2 profit</th><th class="num">Final profit</th><th class="num">DD %</th>
+          <th class="num">LR</th><th>Reason</th>
         </tr></thead>
-        <tbody id="bots"><tr><td colspan="9" class="muted">Sin datos todavía. Pulsa «Lanzar».</td></tr></tbody>
+        <tbody id="bots"><tr><td colspan="9" class="muted">No data yet. Select “Start”.</td></tr></tbody>
       </table>
     </div>
   </section>
 
   <section style="margin-top:18px">
-    <h2>Log en vivo</h2>
+    <h2>Live log</h2>
     <pre id="log">—</pre>
     <div class="updated" id="updated"></div>
   </section>
@@ -130,25 +130,25 @@
 <script>
 const $ = id => document.getElementById(id);
 const csrfToken = '__CSRF_TOKEN__';
-const fmt = v => (v===null||v===undefined) ? '—' : (typeof v==='number' ? v.toLocaleString('es-ES',{maximumFractionDigits:2}) : v);
+const fmt = v => (v===null||v===undefined) ? '—' : (typeof v==='number' ? v.toLocaleString('en-US',{maximumFractionDigits:2}) : v);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
   '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
 }[ch]));
 
 function phaseBadge(b){
-  if(b.verdict==='finalist') return '<span class="badge b-finalist">FINALISTA</span>';
-  if(b.verdict==='rejected') return '<span class="badge b-rejected">rechazado</span>';
+  if(b.verdict==='finalist') return '<span class="badge b-finalist">FINALIST</span>';
+  if(b.verdict==='rejected') return '<span class="badge b-rejected">rejected</span>';
   if(b.verdict==='error')    return '<span class="badge b-error">error</span>';
-  if(b.phase==='pending')    return '<span class="badge b-pending">pendiente</span>';
-  return '<span class="badge b-run">en curso</span>';
+  if(b.phase==='pending')    return '<span class="badge b-pending">pending</span>';
+  return '<span class="badge b-run">running</span>';
 }
 function phaseLabel(b){
-  const m={R1:'Ronda 1',R2:'Ronda 2',R3:'Ronda 3',done:'Terminado',pending:'—'};
+  const m={R1:'Round 1',R2:'Round 2',R3:'Round 3',done:'Done',pending:'—'};
   return `<span class="ph">${esc(m[b.phase]||b.phase)}</span>`;
 }
 function fillList(ul, names){
   ul.innerHTML = names.length ? names.map(n=>`<li title="${esc(n)}">${esc(n)}</li>`).join('')
-                              : '<li class="muted">(vacío)</li>';
+                              : '<li class="muted">(empty)</li>';
 }
 
 function renderGates(fields){
@@ -158,7 +158,7 @@ function renderGates(fields){
       <input id="gate-${f.key}" type="number" data-key="${f.key}"
              step="${f.type==='int' ? '1' : '0.1'}" min="${f.min}" max="${f.max}"
              value="${f.value}">
-      <div class="hint">rango ${f.min}–${f.max}</div>
+      <div class="hint">range ${f.min}–${f.max}</div>
     </div>`).join('');
 }
 
@@ -167,7 +167,7 @@ async function loadGates(){
     const g = await (await fetch('/api/gates')).json();
     renderGates(g.fields);
   }catch(e){
-    $('gates').innerHTML = '<div class="muted">No se pudieron cargar los parámetros.</div>';
+    $('gates').innerHTML = '<div class="muted">Could not load gate parameters.</div>';
   }
 }
 
@@ -175,9 +175,10 @@ $('save-gates').onclick = async ()=>{
   const inputs = $('gates').querySelectorAll('input[data-key]');
   const updates = {};
   for(const inp of inputs) updates[inp.dataset.key] = Number(inp.value);
-  $('gates-msg').textContent = 'Guardando…'; $('gates-msg').className='muted';
+  $('gates-msg').textContent = 'Saving…'; $('gates-msg').className='muted';
   const r = await (await fetch('/api/gates', {method:'POST',
-      headers:{'Content-Type':'application/json'}, body: JSON.stringify(updates)})).json();
+      headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},
+      body: JSON.stringify(updates)})).json();
   if(r.ok){
     $('gates-msg').textContent = '✓ ' + r.message; $('gates-msg').className='msg-ok';
     if(r.fields) renderGates(r.fields);
@@ -193,10 +194,10 @@ async function refresh(){
   let s; try{ s = await (await fetch('/api/status')).json(); }catch(e){ return; }
   const on = s.running;
   $('run').className = 'dot ' + (on?'run-on':'run-idle');
-  $('runlabel').textContent = on ? 'En ejecución' : 'Parado';
+  $('runlabel').textContent = on ? 'Running' : 'Stopped';
   $('go').disabled = on; $('stop').disabled = !on;
   $('save-gates').disabled = on;
-  $('settings-lock').textContent = on ? '(bloqueado mientras corre)' : '';
+  $('settings-lock').textContent = on ? '(locked while running)' : '';
   $('gates').querySelectorAll('input').forEach(i => i.disabled = on);
   if(!gatesLoaded){ gatesLoaded = true; loadGates(); }
 
@@ -215,10 +216,10 @@ async function refresh(){
     <td class="num">${esc(fmt(b.r2_profit))}</td><td class="num">${esc(fmt(b.final_profit))}</td>
     <td class="num">${esc(fmt(b.final_dd_pct))}</td><td class="num">${esc(fmt(b.lr))}</td>
     <td class="muted">${esc(b.reason||'')}</td></tr>`).join('')
-    : '<tr><td colspan="9" class="muted">Sin datos todavía.</td></tr>';
+    : '<tr><td colspan="9" class="muted">No data yet.</td></tr>';
 
   $('log').textContent = (s.log_tail||[]).join('\n') || '—';
-  $('updated').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-ES');
+  $('updated').textContent = 'Updated: ' + new Date().toLocaleTimeString('en-US');
 }
 
 $('go').onclick = async ()=>{ $('go').disabled=true;

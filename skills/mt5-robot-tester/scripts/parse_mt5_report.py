@@ -7,7 +7,7 @@ series from the deals table** so we can compute what the summary omits:
   * % of positive calendar months
   * whether every calendar year is positive
   * the longest gap, in months, before the balance makes a new high
-    ("meses hasta nuevo máximo")
+    (months to a new high)
 
 Plus summary fields: net profit, initial deposit, the worst drawdown % (the
 larger of balance/equity, maximal or relative), LR Correlation, profit factor,

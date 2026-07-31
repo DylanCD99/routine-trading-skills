@@ -43,7 +43,7 @@ def test_gate_fails_when_best_below_3x():
     passes = parse_passes(FIX)
     gate = gate_round1(passes, deposit=20000)  # 3x = 60000 > 45231
     assert gate["passed"] is False
-    assert "umbral" in gate["reason"]
+    assert "threshold" in gate["reason"]
 
 
 def test_gate_fails_with_fewer_than_five_positive():
@@ -54,7 +54,7 @@ def test_gate_fails_with_fewer_than_five_positive():
     ]
     gate = gate_round1(passes, deposit=10000)
     assert gate["passed"] is False
-    assert "positivos" in gate["reason"]
+    assert "profitable" in gate["reason"]
 
 
 def test_best_param_value_picks_from_top_profit():

@@ -137,6 +137,7 @@ Claude Trading Skillsの全スキルをカテゴリ別に紹介します。各�
 | **Edge Pipeline Orchestrator** | エッジ研究パイプライン全体をエンドツーエンドでオーケストレーション。レビュー→修正フィードバックループ付き | <span class="badge badge-free">API不要</span> |
 | **Edge Signal Aggregator** | edge-candidate-agent、theme-detector、sector-analyst、institutional-flow-trackerの出力を重み付け・重複排除・矛盾処理して確信度順ダッシュボードを生成 | <span class="badge badge-free">API不要</span> |
 | **[Signal Postmortem]({{ '/ja/skills/signal-postmortem/' | relative_url }})** | エッジパイプラインやスクリーナーのシグナル結果を記録・分析。TRUE_POSITIVE/FALSE_POSITIVE/REGIME_MISMATCH分類、edge-signal-aggregatorへのウェイトフィードバック、スキル改善バックログ生成 | <span class="badge badge-optional">FMP任意</span> |
+| **[Residual Edge Analyzer]({{ '/ja/skills/residual-edge-analyzer/' | relative_url }})** | 戦略のリターン系列を、宣言したベースライン・エクスポージャーと残差エッジに分解。HAC推定を用いたOLSアトリビューション、ローリング安定性、代替ベースライン感応度、レジーム別内訳を出力し、市場・モメンタム・セクターへの連動を超えた独自アルファの有無を判定 | <span class="badge badge-free">API不要</span> |
 
 ---
 
