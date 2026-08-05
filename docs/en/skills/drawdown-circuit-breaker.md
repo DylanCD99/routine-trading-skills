@@ -83,6 +83,8 @@ The script scans every `th_*.yaml` file and reads realized P&L from each thesis 
 
 If the state directory is missing or empty, the skill returns `TRADING_ALLOWED` with `data_quality: EMPTY_STATE` so a new user is not blocked by the absence of history.
 
+If state exists but a thesis, ledger event, or terminal result must be skipped or conflicts with another recorded value, the skill fails closed with `data_quality: PARTIAL`, `recommendation: HALTED`, and an `incomplete_state_data` rule. Repair the warnings and rerun before taking new risk. A finite terminal `outcome.pnl_dollars` fallback for a legacy thesis with no ledger entry is the only recoverable `PARTIAL` warning and does not by itself override the calculated recommendation. A non-object history event, or a ledger-shaped one whose `realized_pnl` is missing, unparsable, or non-finite, disqualifies that fallback and halts instead; a history event carrying no ledger markers is ignored as a non-ledger event.
+
 ### Step 2: Evaluate Circuit Breaker Rules
 
 The default rules are:
@@ -143,9 +145,11 @@ Use the generated decision as a gate for new trade risk:
 |----------------|---------|
 | TRADING_ALLOWED | No circuit breaker rule is active; new trade risk may proceed through the rest of the workflow |
 | COOLDOWN | Do not open new positions; continue managing existing positions and review the recent losses |
-| HALTED | Stop new entries and focus on review until the active halt expires |
+| HALTED | Stop new entries because a drawdown limit is active or account-state data is incomplete; repair/rerun any data warnings before proceeding |
 
 Existing position management remains a human decision. The circuit breaker is designed to prevent new risk escalation after realized damage, not to force liquidation.
+
+Time-based rules carry an ISO 8601 `active_until`. The non-time-based `incomplete_state_data` rule uses `active_until: null`; its Markdown report says the halt lasts until the state is repaired and the decision is rerun.
 
 ---
 
