@@ -83,7 +83,7 @@ python3 skills/drawdown-circuit-breaker/scripts/check_circuit_breaker.py \
 
 state directory が存在しない、または空の場合は、`data_quality: EMPTY_STATE` とともに `TRADING_ALLOWED` を返します。履歴がまだない新規ユーザーをブロックしないためです。
 
-state が存在する一方で thesis、ledger event、terminal result のいずれかを読み飛ばした場合、または記録値が競合する場合は、`data_quality: PARTIAL`、`recommendation: HALTED`、`incomplete_state_data` rule を返して fail closed にします。warning を修復して再実行するまで新規リスクを取りません。ledger entry がなく、ほかの構造が正常な旧形式の terminal thesis から有限値の `outcome.pnl_dollars` を復元できる場合だけは、監査用に `PARTIAL` を残しつつ、それ単独では計算済み recommendation を上書きしません。
+state が存在する一方で thesis、ledger event、terminal result のいずれかを読み飛ばした場合、または記録値が競合する場合は、`data_quality: PARTIAL`、`recommendation: HALTED`、`incomplete_state_data` rule を返して fail closed にします。warning を修復して再実行するまで新規リスクを取りません。ledger entry がない旧形式の terminal thesis から有限値の `outcome.pnl_dollars` を復元できる場合だけは、監査用に `PARTIAL` を残しつつ、それ単独では計算済み recommendation を上書きしません。history event が object でない場合、または ledger の形をしていながら `realized_pnl` が欠落・解釈不能・非 finite の場合は、この復元を行わずに halt します。ledger を示すフィールドをまったく持たない history event は ledger 以外の event として無視します。
 
 ### Step 2: サーキットブレーカールールを評価する
 

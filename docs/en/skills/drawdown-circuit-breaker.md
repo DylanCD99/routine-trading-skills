@@ -83,7 +83,7 @@ The script scans every `th_*.yaml` file and reads realized P&L from each thesis 
 
 If the state directory is missing or empty, the skill returns `TRADING_ALLOWED` with `data_quality: EMPTY_STATE` so a new user is not blocked by the absence of history.
 
-If state exists but a thesis, ledger event, or terminal result must be skipped or conflicts with another recorded value, the skill fails closed with `data_quality: PARTIAL`, `recommendation: HALTED`, and an `incomplete_state_data` rule. Repair the warnings and rerun before taking new risk. A finite terminal `outcome.pnl_dollars` fallback for an otherwise well-formed legacy thesis with no ledger entry is the only recoverable `PARTIAL` warning and does not by itself override the calculated recommendation.
+If state exists but a thesis, ledger event, or terminal result must be skipped or conflicts with another recorded value, the skill fails closed with `data_quality: PARTIAL`, `recommendation: HALTED`, and an `incomplete_state_data` rule. Repair the warnings and rerun before taking new risk. A finite terminal `outcome.pnl_dollars` fallback for a legacy thesis with no ledger entry is the only recoverable `PARTIAL` warning and does not by itself override the calculated recommendation. A non-object history event, or a ledger-shaped one whose `realized_pnl` is missing, unparsable, or non-finite, disqualifies that fallback and halts instead; a history event carrying no ledger markers is ignored as a non-ledger event.
 
 ### Step 2: Evaluate Circuit Breaker Rules
 
