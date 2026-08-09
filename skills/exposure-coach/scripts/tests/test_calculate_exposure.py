@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 from calculate_exposure import (
     CRITICAL_INPUTS,
     WEIGHTS,
@@ -144,6 +145,65 @@ class TestExtractRegimeScore:
     def test_nested_regime_dict_no_current_regime(self):
         data = {"regime": {"regime_label": "Risk-On"}}
         assert extract_regime_score(data) is None
+
+    def test_canonical_very_low_confidence_is_missing(self):
+        data = {
+            "composite": {"data_quality": {"available_count": 5, "total_components": 6}},
+            "regime": {"current_regime": "Broadening", "confidence": "very_low"},
+        }
+        assert extract_regime_score(data) is None
+        assert extract_regime_name(data) == "Unknown"
+
+    def test_canonical_zero_available_components_is_missing(self):
+        data = {
+            "composite": {"data_quality": {"available_count": 0, "total_components": 6}},
+            "regime": {"current_regime": "Concentration", "confidence": "low"},
+        }
+        assert extract_regime_score(data) is None
+        assert extract_regime_name(data) == "Unknown"
+
+    def test_canonical_malformed_availability_is_missing(self):
+        data = {
+            "composite": {"data_quality": {"available_count": "six", "total_components": 6}},
+            "regime": {"current_regime": "Broadening", "confidence": "high"},
+        }
+        assert extract_regime_score(data) is None
+
+    @pytest.mark.parametrize("available_count", [float("nan"), float("inf"), 0.5, 7, True])
+    def test_canonical_adversarial_availability_is_missing(self, available_count):
+        data = {
+            "composite": {
+                "data_quality": {"available_count": available_count, "total_components": 6}
+            },
+            "regime": {"current_regime": "Broadening", "confidence": "high"},
+        }
+        assert extract_regime_score(data) is None
+        assert extract_regime_name(data) == "Unknown"
+
+    @pytest.mark.parametrize("data", [[], "regime", 42, True])
+    def test_non_object_regime_input_is_missing(self, data):
+        assert extract_regime_score(data) is None
+        assert extract_regime_name(data) == "Unknown"
+
+    def test_canonical_missing_or_invalid_total_is_missing(self):
+        missing_total = {
+            "composite": {"data_quality": {"available_count": 5}},
+            "regime": {"current_regime": "Broadening", "confidence": "high"},
+        }
+        invalid_total = {
+            "composite": {"data_quality": {"available_count": 5, "total_components": False}},
+            "regime": {"current_regime": "Broadening", "confidence": "high"},
+        }
+        assert extract_regime_score(missing_total) is None
+        assert extract_regime_score(invalid_total) is None
+
+    def test_canonical_low_confidence_with_data_is_accepted(self):
+        data = {
+            "composite": {"data_quality": {"available_count": 5, "total_components": 6}},
+            "regime": {"current_regime": "Broadening", "confidence": "low"},
+        }
+        assert extract_regime_score(data) == 80
+        assert extract_regime_name(data) == "Broadening"
 
     def test_none_input(self):
         assert extract_regime_score(None) is None
@@ -625,3 +685,64 @@ class TestIntegration:
             assert data["exposure_ceiling_pct"] < 50
         finally:
             sys.argv = original_argv
+
+    def test_unusable_regime_matches_missing_input_safety_baseline(self, tmp_path):
+        """Issue #311: a 0/6 report cannot raise exposure or confidence."""
+        import sys
+
+        from calculate_exposure import main
+
+        breadth_file = tmp_path / "breadth.json"
+        breadth_file.write_text(json.dumps({"breadth_score": 76}), encoding="utf-8")
+        uptrend_file = tmp_path / "uptrend.json"
+        uptrend_file.write_text(json.dumps({"uptrend_score": 59}), encoding="utf-8")
+        regime_file = tmp_path / "regime.json"
+        regime_file.write_text(
+            json.dumps(
+                {
+                    "composite": {
+                        "composite_score": 0.0,
+                        "signaling_components": 0,
+                        "data_quality": {"available_count": 0, "total_components": 6},
+                    },
+                    "regime": {
+                        "current_regime": "concentration",
+                        "confidence": "very_low",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        output_dir = tmp_path / "reports"
+
+        original_argv = sys.argv
+        sys.argv = [
+            "calculate_exposure.py",
+            "--breadth",
+            str(breadth_file),
+            "--uptrend",
+            str(uptrend_file),
+            "--regime",
+            str(regime_file),
+            "--output-dir",
+            str(output_dir),
+            "--json-only",
+        ]
+        try:
+            assert main() == 0
+        finally:
+            sys.argv = original_argv
+
+        result = json.loads(
+            next(output_dir.glob("exposure_posture_*.json")).read_text(encoding="utf-8")
+        )
+        assert result["component_scores"] == {
+            "breadth_score": 76,
+            "uptrend_score": 59,
+        }
+        assert result["inputs_provided"] == ["breadth", "uptrend"]
+        assert "regime" in result["inputs_missing"]
+        assert result["confidence"] == "LOW"
+        assert result["composite_score"] == 47.5
+        assert result["exposure_ceiling_pct"] == 46
+        assert result["bias"] == "NEUTRAL"

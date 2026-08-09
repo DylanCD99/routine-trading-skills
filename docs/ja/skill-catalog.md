@@ -67,7 +67,7 @@ Claude Trading Skillsの全スキルをカテゴリ別に紹介します。各�
 | **Market Environment Analysis** | グローバルマクロブリーフィング。株式指数、為替、コモディティ、金利、センチメントを網羅 | <span class="badge badge-free">API不要</span> |
 | **[Market Breadth Analyzer]({{ '/ja/skills/market-breadth-analyzer/' | relative_url }})** | TraderMontyの公開CSVデータで6コンポーネントスコアリング（0-100）の市場幅評価 | <span class="badge badge-free">API不要</span> |
 | **Uptrend Analyzer** | 約2,800銘柄・11セクターの上昇トレンド比率を5コンポーネント複合スコアで診断 | <span class="badge badge-free">API不要</span> |
-| **Macro Regime Detector** | クロスアセット比率分析で構造的マクロレジーム転換（1-2年ホライズン）を検出 | <span class="badge badge-api">FMP必須</span> |
+| **Macro Regime Detector** | クロスアセット比率分析で構造的マクロレジーム転換（1-2年ホライズン）を検出 | <span class="badge badge-free">API不要</span> <span class="badge badge-optional">FMP任意</span> |
 | **[US Market Bubble Detector]({{ '/ja/skills/us-market-bubble-detector/' | relative_url }})** | ミンスキー/キンドルバーガーフレームワークの8指標バブルメーター。ステージ別プレイブック付き | <span class="badge badge-free">API不要</span> |
 | **Market Top Detector** | O'NeilのDistribution Days、MinerviniのLeading Stock劣化、Defensive Rotationで天井確率を検出 | <span class="badge badge-free">API不要</span> |
 | **[IBD Distribution Day Monitor]({{ '/ja/skills/ibd-distribution-day-monitor/' | relative_url }})** | QQQ/SPYのIBD式Distribution Dayを日次検出。25セッション失効・5%上昇無効化を追跡し、d5/d15/d25クラスタからNORMAL/CAUTION/HIGH/SEVERE判定とTQQQ/QQQエクスポージャ推奨を生成 | <span class="badge badge-api">FMP必須</span> |
@@ -218,7 +218,7 @@ Claude Trading Skillsの全スキルをカテゴリ別に紹介します。各�
 | Institutional Flow Tracker | 必須 | - | - |
 | Theme Detector | 任意 | 推奨 | - |
 | Pair Trade Screener | 必須 | - | - |
-| Macro Regime Detector | 必須 | - | - |
+| Macro Regime Detector | 任意 | - | - |
 | Options Strategy Advisor | 任意 | - | - |
 | Portfolio Manager | - | - | 必須 |
 | Trader Memory Core | 任意 | - | - |

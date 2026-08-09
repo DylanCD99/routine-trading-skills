@@ -111,6 +111,7 @@ Exposure Coach は個別銘柄の買い推奨ではありません。市場環�
 
 ## 7. 注意点
 
+- `very_low` confidence または利用可能コンポーネント0件のmacro-regimeレポートは、重要入力の欠損として扱います。regime scoreやbiasへ手動で戻さず、missing-input haircutとconfidence capを維持してください。
 - theme detector の JSON が認識されない場合、テーマ要因を手動で exposure ceiling に混ぜないでください。
 - 入力が少ないときは、結論より confidence と missing input を重視してください。
 - 実際の発注前には `technical-analyst` と `position-sizer` で個別確認します。
