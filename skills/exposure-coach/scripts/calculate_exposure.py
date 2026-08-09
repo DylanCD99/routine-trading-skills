@@ -49,7 +49,10 @@ def _regime_input_is_usable(data: Optional[dict]) -> bool:
         return False
 
     regime = data.get("regime")
-    if isinstance(regime, dict) and "confidence" in regime:
+    nested_regime = isinstance(regime, dict)
+    if nested_regime:
+        if "confidence" not in regime:
+            return False
         confidence = regime["confidence"]
         if not isinstance(confidence, str):
             return False
@@ -60,7 +63,12 @@ def _regime_input_is_usable(data: Optional[dict]) -> bool:
             return False
 
     composite = data.get("composite")
-    if isinstance(composite, dict) and "data_quality" in composite:
+    if nested_regime and not isinstance(composite, dict):
+        return False
+
+    if nested_regime or (isinstance(composite, dict) and "data_quality" in composite):
+        if "data_quality" not in composite:
+            return False
         data_quality = composite["data_quality"]
         if (
             not isinstance(data_quality, dict)

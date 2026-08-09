@@ -60,11 +60,12 @@ python3 skills/exposure-coach/scripts/calculate_exposure.py \
 
 The script accepts partial inputs; missing files reduce confidence but do not block execution.
 
-Macro-regime reports marked `very_low` confidence or reporting zero usable
-components are treated as missing critical input. They do not contribute a
-regime score or bias, and the normal missing-input haircut and confidence cap
-apply. Never override this degradation by manually copying the report's regime
-label into the exposure decision.
+Canonical macro-regime reports must include nested `regime.confidence` and
+`composite.data_quality` with valid integer component counts. Missing or malformed
+availability metadata, `very_low` confidence, and zero usable components are
+treated as missing critical input. They do not contribute a regime score or bias,
+and the normal missing-input haircut and confidence cap apply. Never override this
+degradation by manually copying the report's regime label into the exposure decision.
 
 **Verification pitfall:** After each run, inspect the generated JSON fields `inputs_provided` and `inputs_missing`. If a file you passed on the CLI still appears in `inputs_missing` (for example a theme-detector JSON that the exposure engine did not recognize), report the affected dimension as degraded and keep confidence capped; do not assume the supplied input was incorporated just because the CLI argument was present.
 

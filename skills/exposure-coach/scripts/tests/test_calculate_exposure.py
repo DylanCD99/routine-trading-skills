@@ -24,6 +24,14 @@ from calculate_exposure import (
 )
 
 
+def canonical_regime(regime: dict) -> dict:
+    """Build the availability metadata required by canonical regime reports."""
+    return {
+        "composite": {"data_quality": {"available_count": 5, "total_components": 6}},
+        "regime": {"confidence": "high", **regime},
+    }
+
+
 class TestExtractBreadthScore:
     """Tests for breadth score extraction."""
 
@@ -135,15 +143,15 @@ class TestExtractRegimeScore:
 
     def test_nested_regime_dict_current_regime(self):
         # macro-regime-detector emits regime as a nested object
-        data = {"regime": {"current_regime": "Broadening"}}
+        data = canonical_regime({"current_regime": "Broadening"})
         assert extract_regime_score(data) == 80
 
     def test_nested_regime_dict_unknown_defaults_50(self):
-        data = {"regime": {"current_regime": "Sideways"}}
+        data = canonical_regime({"current_regime": "Sideways"})
         assert extract_regime_score(data) == 50
 
     def test_nested_regime_dict_no_current_regime(self):
-        data = {"regime": {"regime_label": "Risk-On"}}
+        data = canonical_regime({"regime_label": "Risk-On"})
         assert extract_regime_score(data) is None
 
     def test_canonical_very_low_confidence_is_missing(self):
@@ -168,6 +176,36 @@ class TestExtractRegimeScore:
             "regime": {"current_regime": "Broadening", "confidence": "high"},
         }
         assert extract_regime_score(data) is None
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            {
+                "regime": {"current_regime": "Broadening", "confidence": "high"},
+            },
+            {
+                "composite": "not-an-object",
+                "regime": {"current_regime": "Broadening", "confidence": "high"},
+            },
+            {
+                "composite": {},
+                "regime": {"current_regime": "Broadening", "confidence": "high"},
+            },
+            {
+                "composite": {"data_quality": {"available_count": 5, "total_components": 6}},
+                "regime": {"current_regime": "Broadening"},
+            },
+        ],
+        ids=[
+            "missing-composite",
+            "non-object-composite",
+            "missing-data-quality",
+            "missing-confidence",
+        ],
+    )
+    def test_incomplete_canonical_availability_is_missing(self, data):
+        assert extract_regime_score(data) is None
+        assert extract_regime_name(data) == "Unknown"
 
     @pytest.mark.parametrize("available_count", [float("nan"), float("inf"), 0.5, 7, True])
     def test_canonical_adversarial_availability_is_missing(self, available_count):
@@ -222,11 +260,11 @@ class TestExtractRegimeName:
         assert extract_regime_name({"current_regime": "contraction"}) == "Contraction"
 
     def test_nested_label_preferred(self):
-        data = {"regime": {"regime_label": "Risk-On", "current_regime": "broadening"}}
+        data = canonical_regime({"regime_label": "Risk-On", "current_regime": "broadening"})
         assert extract_regime_name(data) == "Risk-on"
 
     def test_nested_current_regime_fallback(self):
-        data = {"regime": {"current_regime": "transitional"}}
+        data = canonical_regime({"current_regime": "transitional"})
         assert extract_regime_name(data) == "Transitional"
 
     def test_nested_empty_dict_returns_unknown(self):
@@ -320,7 +358,7 @@ class TestRealUpstreamShapesAllCount:
     def test_all_five_inputs_extracted(self):
         breadth = {"composite": {"composite_score": 70}}  # market-breadth-analyzer
         uptrend = {"composite": {"composite_score": 65}}  # uptrend-analyzer
-        regime = {"regime": {"current_regime": "broadening"}}  # macro-regime-detector
+        regime = canonical_regime({"current_regime": "broadening"})
         top_risk = {"composite": {"composite_score": 20}}  # market-top-detector (low risk)
         ftd = {"quality_score": {"total_score": 75}}  # ftd-detector (strong FTD)
 
