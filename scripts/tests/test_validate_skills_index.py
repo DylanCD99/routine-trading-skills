@@ -137,6 +137,16 @@ def minimal_skill(skill_id: str, **overrides) -> dict:
         "inputs": ["test_input"],
         "outputs": ["test_output"],
         "workflows": [],
+        "verification": {
+            "instruction_contract": "not_verified",
+            "unit_tests": "not_verified",
+            "workflow_contract": "not_applicable",
+            "end_to_end_replay": "not_applicable",
+            "data_provenance": "not_verified",
+            "financial_logic_review": "not_verified",
+            "empirical_validation": "not_verified",
+            "security_review": "not_verified",
+        },
     }
     base.update(overrides)
     return base
@@ -1168,6 +1178,207 @@ def test_consume_optional_artifact_passes(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # strict-metadata
 # ---------------------------------------------------------------------------
+
+
+def test_production_missing_verification_warns_by_default(tmp_path: Path) -> None:
+    write_skill(tmp_path, "alpha")
+    skill = minimal_skill("alpha")
+    skill.pop("verification")
+    write_index(tmp_path, [skill])
+
+    findings = validate(tmp_path)
+
+    assert codes(findings) == []
+    assert [f.code for f in findings].count("IDX013") == 1
+    assert any(f.code == "IDX013" and f.severity == "warning" for f in findings)
+
+
+def test_production_missing_verification_warns_with_strict_workflows_only(
+    tmp_path: Path,
+) -> None:
+    write_skill(tmp_path, "alpha")
+    skill = minimal_skill("alpha")
+    skill.pop("verification")
+    write_index(tmp_path, [skill])
+
+    findings = validate(tmp_path, strict_workflows=True)
+
+    assert codes(findings) == []
+    assert [f.code for f in findings].count("IDX013") == 1
+
+
+@pytest.mark.parametrize("strict_workflows", [False, True])
+def test_production_missing_verification_errors_with_strict_metadata(
+    tmp_path: Path, strict_workflows: bool
+) -> None:
+    write_skill(tmp_path, "alpha")
+    skill = minimal_skill("alpha")
+    skill.pop("verification")
+    write_index(tmp_path, [skill])
+
+    findings = validate(
+        tmp_path,
+        strict_metadata=True,
+        strict_workflows=strict_workflows,
+    )
+
+    idx013 = [f for f in findings if f.code == "IDX013"]
+    assert len(idx013) == 1
+    assert idx013[0].severity == "error"
+
+
+def test_non_production_may_omit_verification(tmp_path: Path) -> None:
+    write_skill(tmp_path, "alpha")
+    skill = minimal_skill("alpha", status="beta")
+    skill.pop("verification")
+    write_index(tmp_path, [skill])
+
+    findings = validate(tmp_path, strict_metadata=True)
+
+    assert "IDX013" not in [f.code for f in findings]
+
+
+@pytest.mark.parametrize(
+    ("verification", "message_fragment"),
+    [
+        ([], "must be a mapping"),
+        (
+            {
+                "instruction_contract": "not_verified",
+                "unit_tests": "not_verified",
+                "workflow_contract": "not_applicable",
+                "end_to_end_replay": "not_applicable",
+                "data_provenance": "not_verified",
+                "financial_logic_review": "not_verified",
+                "empirical_validation": "not_verified",
+            },
+            "missing keys",
+        ),
+        (
+            {
+                **minimal_skill("unused")["verification"],
+                "unexpected_axis": "passed",
+            },
+            "unknown keys",
+        ),
+        (
+            {
+                **minimal_skill("unused")["verification"],
+                "unit_tests": "failed",
+            },
+            "invalid value",
+        ),
+        (
+            {
+                **minimal_skill("unused")["verification"],
+                "unit_tests": None,
+            },
+            "invalid value",
+        ),
+        (
+            {
+                **minimal_skill("unused")["verification"],
+                "unit_tests": ["passed"],
+            },
+            "invalid value",
+        ),
+    ],
+)
+def test_present_verification_block_is_strictly_validated_in_all_modes(
+    tmp_path: Path,
+    verification: object,
+    message_fragment: str,
+) -> None:
+    write_skill(tmp_path, "alpha")
+    write_index(tmp_path, [minimal_skill("alpha", verification=verification)])
+
+    for kwargs in (
+        {},
+        {"strict_workflows": True},
+        {"strict_metadata": True},
+        {"strict_workflows": True, "strict_metadata": True},
+    ):
+        findings = validate(tmp_path, **kwargs)
+        idx013 = [f for f in findings if f.code == "IDX013"]
+        assert len(idx013) == 1, (kwargs, findings)
+        assert idx013[0].severity == "error"
+        assert message_fragment in idx013[0].message
+
+
+@pytest.mark.parametrize(
+    ("override", "expected_code"),
+    [
+        ({"category": ["core-portfolio"]}, "IDX005"),
+        ({"status": ["production"]}, "IDX006"),
+        ({"timeframe": ["weekly"]}, "IDX-META"),
+        ({"difficulty": {"value": "advanced"}}, "IDX-META"),
+        (
+            {"integrations": [{"id": "x", "type": ["broker"], "requirement": "required"}]},
+            "IDX007",
+        ),
+        (
+            {"integrations": [{"id": "x", "type": "broker", "requirement": {"value": "required"}}]},
+            "IDX008",
+        ),
+    ],
+)
+def test_enum_type_mismatches_report_findings_instead_of_crashing(
+    tmp_path: Path, override: dict, expected_code: str
+) -> None:
+    write_skill(tmp_path, "alpha")
+    write_index(tmp_path, [minimal_skill("alpha", **override)])
+
+    for kwargs in (
+        {},
+        {"strict_workflows": True},
+        {"strict_metadata": True},
+        {"strict_workflows": True, "strict_metadata": True},
+    ):
+        findings = validate(tmp_path, **kwargs)
+        assert expected_code in [finding.code for finding in findings]
+
+
+def test_mixed_type_unknown_verification_keys_report_idx013(tmp_path: Path) -> None:
+    write_skill(tmp_path, "alpha")
+    verification = {**minimal_skill("alpha")["verification"], "unexpected_axis": "passed"}
+    verification[1] = "passed"
+    write_index(tmp_path, [minimal_skill("alpha", verification=verification)])
+
+    for kwargs in (
+        {},
+        {"strict_workflows": True},
+        {"strict_metadata": True},
+        {"strict_workflows": True, "strict_metadata": True},
+    ):
+        findings = validate(tmp_path, **kwargs)
+        assert [finding.code for finding in findings].count("IDX013") == 1
+
+
+def test_categories_rejects_unhashable_items_without_crashing(tmp_path: Path) -> None:
+    import yaml as _yaml
+
+    write_skill(tmp_path, "alpha")
+    payload = {
+        "schema_version": 1,
+        "categories": [
+            "market-regime",
+            "core-portfolio",
+            "swing-opportunity",
+            "trade-planning",
+            "trade-memory",
+            "strategy-research",
+            "advanced-satellite",
+            {"bad": "meta"},
+        ],
+        "skills": [minimal_skill("alpha")],
+    }
+    (tmp_path / "skills-index.yaml").write_text(
+        _yaml.safe_dump(payload, sort_keys=False), encoding="utf-8"
+    )
+
+    findings = validate(tmp_path, strict_metadata=True)
+
+    assert "IDX011" in codes(findings)
 
 
 def test_strict_metadata_rejects_unknown_timeframe(tmp_path: Path) -> None:
