@@ -667,10 +667,14 @@ skills:
   timeframe: weekly
   difficulty: advanced
   integrations:
-  - id: yfinance_or_csv
+  - id: yfinance
     type: market_data
-    requirement: recommended
-    note: Cross-asset ratio data via yfinance or local CSV
+    requirement: required
+    note: Keyless cross-asset ETF history; declared in the skill-local requirements file
+  - id: fmp
+    type: market_data
+    requirement: optional
+    note: Optional FMP market and Treasury data; unavailable ETF history falls back to yfinance
   inputs:
   - cross_asset_ratios
   - yield_curve_data
