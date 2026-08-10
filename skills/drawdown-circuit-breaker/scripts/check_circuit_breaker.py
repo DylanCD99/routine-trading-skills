@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from collections.abc import Iterable
@@ -24,11 +25,15 @@ import yaml
 
 ET = ZoneInfo("America/New_York")
 TERMINAL_STATUSES = {"CLOSED", "INVALIDATED"}
+THESIS_STATUSES = {"IDEA", "ENTRY_READY", "ACTIVE", "PARTIALLY_CLOSED", *TERMINAL_STATUSES}
+REQUIRED_HISTORY_STATUSES = {"ACTIVE", "PARTIALLY_CLOSED", *TERMINAL_STATUSES}
 RECOMMENDATION_RANK = {"TRADING_ALLOWED": 0, "COOLDOWN": 1, "HALTED": 2}
 DATE_ONLY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 PRODUCER_UTC_MIDNIGHT_RE = re.compile(
     r"^(?P<day>\d{4}-\d{2}-\d{2})T00:00:00(?:\.0+)?(?:Z|\+00:00)$"
 )
+RECOVERABLE_DATA_WARNING_PREFIXES = ("Inferred missing realized_pnl from outcome.pnl_dollars",)
+LEDGER_EVENT_FIELDS = {"shares_sold", "quantity_sold", "price", "proceeds"}
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,96 @@ class TerminalResult:
     event_at: datetime | None
     thesis_id: str
     ticker: str
+
+
+def _positive_finite_float(value: Any, *, name: str) -> float:
+    """Parse a positive finite risk input or raise a user-facing error."""
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be a number, not a boolean")
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{name} must be a number") from exc
+    if not math.isfinite(parsed):
+        raise ValueError(f"{name} must be finite")
+    if parsed <= 0:
+        raise ValueError(f"{name} must be positive")
+    return parsed
+
+
+def _finite_number(value: Any, *, name: str) -> float:
+    """Parse an already-typed finite P&L number without bool/string coercion."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be an int or float")
+    try:
+        if not math.isfinite(value):
+            raise ValueError(f"{name} must be finite; non-finite values are not allowed")
+        return float(value)
+    except OverflowError as exc:
+        raise ValueError(f"{name} must be finite; non-finite values are not allowed") from exc
+
+
+def _positive_int(value: Any, *, name: str) -> int:
+    """Require an exact positive integer without boolean or float coercion."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{name} must be an integer")
+    if value < 1:
+        raise ValueError(f"{name} must be at least 1")
+    return value
+
+
+def _positive_finite_arg(value: str) -> float:
+    try:
+        return _positive_finite_float(value, name="value")
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _warning_blocks_new_risk(warning: str) -> bool:
+    """Return whether a data warning means risk inputs were lost or conflicted."""
+    return not warning.startswith(RECOVERABLE_DATA_WARNING_PREFIXES)
+
+
+def _is_ledger_event_missing_pnl(event: dict[str, Any]) -> bool:
+    """Identify trim/final-leg events that must carry realized_pnl."""
+    return event.get("status") == "PARTIALLY_CLOSED" or bool(LEDGER_EVENT_FIELDS & event.keys())
+
+
+def _parseable_history_event_error(event: Any) -> str | None:
+    if not isinstance(event, dict):
+        return "status_history event expected object"
+    status = event.get("status")
+    if status not in THESIS_STATUSES:
+        return f"missing or unrecognized status: {status!r}"
+    try:
+        _parse_event_datetime(event.get("at"))
+    except ValueError as exc:
+        return f"invalid at: {exc}"
+    return None
+
+
+def _validate_open_thesis_fields(data: dict, *, status: str) -> None:
+    entry = data.get("entry")
+    if not isinstance(entry, dict):
+        raise ValueError(f"{status} thesis requires entry")
+    if entry.get("actual_price") is None:
+        raise ValueError(f"{status} thesis requires entry.actual_price")
+    _finite_number(entry["actual_price"], name="entry.actual_price")
+    if entry.get("actual_date") is None:
+        raise ValueError(f"{status} thesis requires entry.actual_date")
+    _parse_event_datetime(entry["actual_date"])
+    if status == "PARTIALLY_CLOSED":
+        position = data.get("position")
+        if not isinstance(position, dict) or not position:
+            raise ValueError(f"{status} thesis requires position")
+
+
+def _loss_threshold(account_size: float, percentage: float, *, name: str) -> float:
+    """Compute a finite positive dollar threshold without multiply-first overflow."""
+    threshold = account_size * (percentage / 100.0)
+    if not math.isfinite(threshold) or threshold <= 0:
+        raise ValueError(f"{name} derived threshold must be positive and finite")
+    return threshold
 
 
 def _parse_datetime(
@@ -124,19 +219,18 @@ def build_config(args: argparse.Namespace) -> CircuitConfig:
     }
     raw.update({key: value for key, value in cli_overrides.items() if value is not None})
     config = CircuitConfig(
-        max_daily_loss_pct=float(raw["max_daily_loss_pct"]),
-        losing_streak_n=int(raw["losing_streak_n"]),
-        cooldown_hours=float(raw["cooldown_hours"]),
-        weekly_drawdown_pct=float(raw["weekly_drawdown_pct"]),
-        monthly_drawdown_pct=float(raw["monthly_drawdown_pct"]),
+        max_daily_loss_pct=_positive_finite_float(
+            raw["max_daily_loss_pct"], name="max_daily_loss_pct"
+        ),
+        losing_streak_n=_positive_int(raw["losing_streak_n"], name="losing_streak_n"),
+        cooldown_hours=_positive_finite_float(raw["cooldown_hours"], name="cooldown_hours"),
+        weekly_drawdown_pct=_positive_finite_float(
+            raw["weekly_drawdown_pct"], name="weekly_drawdown_pct"
+        ),
+        monthly_drawdown_pct=_positive_finite_float(
+            raw["monthly_drawdown_pct"], name="monthly_drawdown_pct"
+        ),
     )
-    if config.losing_streak_n < 1:
-        raise ValueError("losing_streak_n must be at least 1")
-    if config.cooldown_hours <= 0:
-        raise ValueError("cooldown_hours must be positive")
-    for name in ("max_daily_loss_pct", "weekly_drawdown_pct", "monthly_drawdown_pct"):
-        if getattr(config, name) <= 0:
-            raise ValueError(f"{name} must be positive")
     return config
 
 
@@ -145,13 +239,66 @@ def _load_thesis_file(path: Path) -> dict:
         data = yaml.safe_load(f)
     if not isinstance(data, dict):
         raise ValueError("thesis file must contain a YAML object")
+    status = data.get("status")
+    if status not in THESIS_STATUSES:
+        raise ValueError(f"thesis file has missing or unrecognized status: {status!r}")
+    history = data.get("status_history")
+    if not isinstance(history, list):
+        raise ValueError("thesis status_history must be a list")
+    for field in ("thesis_id", "ticker"):
+        if not isinstance(data.get(field), str) or not data[field].strip():
+            raise ValueError(f"thesis file has missing or empty {field}")
+    if status in REQUIRED_HISTORY_STATUSES:
+        if not history:
+            raise ValueError(f"{status} thesis has no status_history events")
+        for index, event in enumerate(history):
+            event_error = _parseable_history_event_error(event)
+            if event_error:
+                raise ValueError(f"status_history[{index}] is malformed: {event_error}")
+        if history[-1]["status"] != status:
+            raise ValueError(
+                "thesis status_history does not reach current status: "
+                f"last={history[-1]['status']!r}, current={status!r}"
+            )
+    if status in {"ACTIVE", "PARTIALLY_CLOSED"}:
+        _validate_open_thesis_fields(data, status=status)
+    if status == "PARTIALLY_CLOSED":
+        has_valid_ledger_entry = False
+        for event in history:
+            if not isinstance(event, dict) or not _is_ledger_event_missing_pnl(event):
+                continue
+            try:
+                _finite_number(event["realized_pnl"], name="realized_pnl")
+                _parse_event_datetime(event.get("at"))
+            except (KeyError, TypeError, ValueError, OverflowError):
+                continue
+            has_valid_ledger_entry = True
+            break
+        if not has_valid_ledger_entry:
+            raise ValueError(
+                "PARTIALLY_CLOSED thesis has no valid ledger event "
+                "(missing or non-finite realized_pnl/at)"
+            )
     return data
+
+
+def _finite_sum(values: Iterable[float]) -> float | None:
+    """Return an accurately summed finite total, or None on overflow."""
+    try:
+        total = math.fsum(values)
+    except OverflowError:
+        return None
+    if not math.isfinite(total):
+        return None
+    return round(total, 2)
 
 
 def load_theses(state_dir: Path) -> tuple[list[dict], str, list[str]]:
     """Load thesis YAMLs, returning (valid theses, data_quality, warnings)."""
     if not state_dir.exists():
         return [], "EMPTY_STATE", []
+    if not state_dir.is_dir():
+        return [], "PARTIAL", [f"State path is not a directory: {state_dir}"]
     paths = sorted(state_dir.glob("th_*.yaml"))
     if not paths:
         return [], "EMPTY_STATE", []
@@ -177,22 +324,44 @@ def _iter_ledger_entries(theses: Iterable[dict]) -> tuple[list[LedgerEntry], lis
     for thesis in theses:
         source = thesis.get("_source_path") or thesis.get("thesis_id", "<unknown>")
         thesis_entries: list[LedgerEntry] = []
+        thesis_ledger_invalid = False
         history = thesis.get("status_history", [])
         if not isinstance(history, list):
             warnings.append(f"Skipped status_history for {source}: expected list")
+            thesis_ledger_invalid = True
             history = []
         for event in history:
-            if not isinstance(event, dict) or "realized_pnl" not in event:
+            if not isinstance(event, dict):
+                warnings.append(
+                    f"Skipped malformed status_history event for {source}: expected object"
+                )
+                thesis_ledger_invalid = True
+                continue
+            if "realized_pnl" not in event:
+                if _is_ledger_event_missing_pnl(event):
+                    warnings.append(
+                        f"Skipped malformed status_history event for {source}: "
+                        "ledger-shaped event missing realized_pnl"
+                    )
+                    thesis_ledger_invalid = True
                 continue
             try:
-                realized_pnl = float(event["realized_pnl"])
+                realized_pnl = _finite_number(event["realized_pnl"], name="realized_pnl")
                 at = _parse_event_datetime(event.get("at"))
-            except Exception as exc:  # noqa: BLE001 - malformed ledger entry should not block.
+            except Exception as exc:  # noqa: BLE001 - record all malformed local ledger values.
                 warnings.append(f"Skipped realized_pnl event for {source}: {exc}")
+                thesis_ledger_invalid = True
                 continue
             entry = LedgerEntry(realized_pnl=realized_pnl, at=at)
             thesis_entries.append(entry)
-            entries.append(entry)
+
+        ledger_total = _finite_sum(entry.realized_pnl for entry in thesis_entries)
+        if thesis_entries and ledger_total is None:
+            warnings.append(f"Skipped realized_pnl ledger for {source}: aggregate is non-finite")
+            thesis_ledger_invalid = True
+            thesis_entries = []
+        else:
+            entries.extend(thesis_entries)
 
         if thesis.get("status") in TERMINAL_STATUSES:
             outcome = thesis.get("outcome") or {}
@@ -200,18 +369,26 @@ def _iter_ledger_entries(theses: Iterable[dict]) -> tuple[list[LedgerEntry], lis
             if outcome_pnl is None:
                 continue
             try:
-                outcome_pnl_float = float(outcome_pnl)
-            except (TypeError, ValueError):
+                outcome_pnl_float = _finite_number(outcome_pnl, name="outcome.pnl_dollars")
+            except (TypeError, ValueError, OverflowError) as exc:
+                warnings.append(f"Skipped outcome.pnl_dollars for {source}: {exc}")
                 continue
 
-            ledger_total = round(sum(entry.realized_pnl for entry in thesis_entries), 2)
             if thesis_entries:
+                assert ledger_total is not None
                 if abs(ledger_total - outcome_pnl_float) >= 0.01:
                     warnings.append(
                         "Ledger/outcome P&L mismatch for "
                         f"{thesis.get('thesis_id')}: ledger={ledger_total:.2f}, "
                         f"outcome={outcome_pnl_float:.2f}; using ledger entries"
                     )
+                continue
+
+            if thesis_ledger_invalid:
+                warnings.append(
+                    "Could not infer missing realized_pnl from outcome.pnl_dollars for "
+                    f"{thesis.get('thesis_id')}: malformed ledger history"
+                )
                 continue
 
             event_at = _terminal_event_datetime(thesis)
@@ -268,9 +445,11 @@ def collect_terminal_results(theses: Iterable[dict]) -> tuple[list[TerminalResul
             )
             continue
         try:
-            pnl = float(outcome["pnl_dollars"])
-        except (TypeError, ValueError):
-            warnings.append(f"Skipped terminal thesis with invalid pnl: {thesis.get('thesis_id')}")
+            pnl = _finite_number(outcome["pnl_dollars"], name="pnl_dollars")
+        except (TypeError, ValueError, OverflowError) as exc:
+            warnings.append(
+                f"Skipped terminal thesis with invalid pnl: {thesis.get('thesis_id')}: {exc}"
+            )
             continue
         results.append(
             TerminalResult(
@@ -290,16 +469,16 @@ def _sum_realized_between(
     start_date: date,
     end_date: date,
     as_of: datetime,
-) -> float:
+) -> tuple[float, str | None]:
     as_of_et = as_of.astimezone(ET)
-    return round(
-        sum(
-            entry.realized_pnl
-            for entry in entries
-            if entry.at <= as_of_et and start_date <= entry.at.date() <= end_date
-        ),
-        2,
+    total = _finite_sum(
+        entry.realized_pnl
+        for entry in entries
+        if entry.at <= as_of_et and start_date <= entry.at.date() <= end_date
     )
+    if total is None:
+        return 0.0, "aggregate is non-finite"
+    return total, None
 
 
 def _next_weekday(day: date) -> date:
@@ -356,10 +535,6 @@ def evaluate_circuit_breaker(
     warnings.extend(ledger_warnings)
     warnings.extend(terminal_warnings)
 
-    quality = initial_quality
-    if warnings and quality == "OK":
-        quality = "PARTIAL"
-
     as_of_et = as_of.astimezone(ET)
     as_of_date = as_of_et.date()
     week_start = as_of_date - timedelta(days=as_of_date.weekday())
@@ -371,14 +546,36 @@ def evaluate_circuit_breaker(
         if result.event_at is not None and result.event_at <= as_of_et
     ]
 
-    realized_today = _sum_realized_between(ledger_entries, as_of_date, as_of_date, as_of_et)
-    realized_wtd = _sum_realized_between(ledger_entries, week_start, as_of_date, as_of_et)
-    realized_mtd = _sum_realized_between(ledger_entries, month_start, as_of_date, as_of_et)
+    realized_today, today_sum_error = _sum_realized_between(
+        ledger_entries, as_of_date, as_of_date, as_of_et
+    )
+    realized_wtd, wtd_sum_error = _sum_realized_between(
+        ledger_entries, week_start, as_of_date, as_of_et
+    )
+    realized_mtd, mtd_sum_error = _sum_realized_between(
+        ledger_entries, month_start, as_of_date, as_of_et
+    )
+    for period, error in (
+        ("today", today_sum_error),
+        ("week-to-date", wtd_sum_error),
+        ("month-to-date", mtd_sum_error),
+    ):
+        if error:
+            warnings.append(f"Could not aggregate realized_pnl for {period}: {error}")
+
+    incomplete_state_data = initial_quality == "PARTIAL" or any(
+        _warning_blocks_new_risk(warning) for warning in warnings
+    )
+    quality = initial_quality
+    if warnings and quality == "OK":
+        quality = "PARTIAL"
     consecutive_losses, last_loss_exit_at = _consecutive_losses(terminal_results)
 
     triggered_rules: list[dict] = []
 
-    daily_threshold = account_size * config.max_daily_loss_pct / 100
+    daily_threshold = _loss_threshold(
+        account_size, config.max_daily_loss_pct, name="max_daily_loss"
+    )
     if realized_today <= -daily_threshold:
         active_until = _start_of_day_et(_next_weekday(as_of_date))
         triggered_rules.append(
@@ -412,7 +609,9 @@ def evaluate_circuit_breaker(
                 }
             )
 
-    weekly_threshold = account_size * config.weekly_drawdown_pct / 100
+    weekly_threshold = _loss_threshold(
+        account_size, config.weekly_drawdown_pct, name="weekly_drawdown"
+    )
     if realized_wtd <= -weekly_threshold:
         active_until = _start_of_day_et(_next_monday(as_of_date))
         triggered_rules.append(
@@ -429,7 +628,9 @@ def evaluate_circuit_breaker(
             }
         )
 
-    monthly_threshold = account_size * config.monthly_drawdown_pct / 100
+    monthly_threshold = _loss_threshold(
+        account_size, config.monthly_drawdown_pct, name="monthly_drawdown"
+    )
     if realized_mtd <= -monthly_threshold:
         active_until = _start_of_day_et(_first_next_month(as_of_date))
         triggered_rules.append(
@@ -446,6 +647,21 @@ def evaluate_circuit_breaker(
             }
         )
 
+    if incomplete_state_data:
+        triggered_rules.append(
+            {
+                "rule": "incomplete_state_data",
+                "threshold": "OK_OR_EMPTY_STATE",
+                "observed": "PARTIAL",
+                "active_until": None,
+                "severity": "HALTED",
+                "detail": (
+                    "Trader-memory state is incomplete; repair the reported data warnings "
+                    "and rerun the circuit breaker before taking new trade risk."
+                ),
+            }
+        )
+
     recommendation = "TRADING_ALLOWED"
     for rule in triggered_rules:
         severity = rule.pop("severity")
@@ -456,6 +672,11 @@ def evaluate_circuit_breaker(
         rationale = "No account-level circuit breaker rules are active; new trade risk may proceed."
     elif recommendation == "COOLDOWN":
         rationale = "Recent losing closes triggered a cooldown. Avoid new entries until the cooldown expires."
+    elif any(rule["rule"] == "incomplete_state_data" for rule in triggered_rules):
+        rationale = (
+            "Trader-memory state is incomplete. Halt new entries until the reported data "
+            "warnings are repaired and the circuit breaker is rerun."
+        )
     else:
         rationale = "Realized losses breached one or more drawdown limits. Halt new entries and focus on review."
 
@@ -509,12 +730,13 @@ def generate_markdown_report(result: dict) -> str:
     if result["triggered_rules"]:
         lines.extend(["## Triggered Rules", ""])
         for rule in result["triggered_rules"]:
+            active_until = rule["active_until"] or "state is repaired and the decision is rerun"
             lines.append(
                 "- {rule}: observed {observed}, threshold {threshold}, active until {until}. {detail}".format(
                     rule=rule["rule"],
                     observed=rule["observed"],
                     threshold=rule["threshold"],
-                    until=rule["active_until"],
+                    until=active_until,
                     detail=rule["detail"],
                 )
             )
@@ -529,16 +751,18 @@ def generate_markdown_report(result: dict) -> str:
 
 
 def write_reports(result: dict, output_dir: Path, json_only: bool) -> tuple[Path, Path | None]:
+    json_text = json.dumps(result, indent=2, allow_nan=False) + "\n"
+    markdown_text = None if json_only else generate_markdown_report(result)
     output_dir.mkdir(parents=True, exist_ok=True)
     generated_at = _parse_datetime(result["generated_at"]).astimezone(timezone.utc)
     timestamp = generated_at.strftime("%Y-%m-%d_%H%M%S")
     json_path = output_dir / f"circuit_breaker_decision_{timestamp}.json"
-    json_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    json_path.write_text(json_text, encoding="utf-8")
 
     md_path = None
-    if not json_only:
+    if markdown_text is not None:
         md_path = output_dir / f"circuit_breaker_decision_{timestamp}.md"
-        md_path.write_text(generate_markdown_report(result), encoding="utf-8")
+        md_path.write_text(markdown_text, encoding="utf-8")
     return json_path, md_path
 
 
@@ -547,16 +771,16 @@ def build_parser() -> argparse.ArgumentParser:
         description="Evaluate account-level drawdown circuit breaker rules"
     )
     parser.add_argument("--state-dir", type=Path, default=Path("state/theses"))
-    parser.add_argument("--account-size", type=float, required=True)
+    parser.add_argument("--account-size", type=_positive_finite_arg, required=True)
     parser.add_argument(
         "--as-of", help="Evaluation date/time; date-only values cover the full ET day"
     )
     parser.add_argument("--config", type=Path, help="JSON config overriding circuit thresholds")
-    parser.add_argument("--max-daily-loss-pct", type=float)
+    parser.add_argument("--max-daily-loss-pct", type=_positive_finite_arg)
     parser.add_argument("--losing-streak-n", type=int)
-    parser.add_argument("--cooldown-hours", type=float)
-    parser.add_argument("--weekly-drawdown-pct", type=float)
-    parser.add_argument("--monthly-drawdown-pct", type=float)
+    parser.add_argument("--cooldown-hours", type=_positive_finite_arg)
+    parser.add_argument("--weekly-drawdown-pct", type=_positive_finite_arg)
+    parser.add_argument("--monthly-drawdown-pct", type=_positive_finite_arg)
     parser.add_argument("--output-dir", type=Path, default=Path("reports"))
     parser.add_argument("--json-only", action="store_true", help="Write only JSON artifact")
     return parser
@@ -565,8 +789,6 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.account_size <= 0:
-        parser.error("--account-size must be positive")
 
     try:
         config = build_config(args)

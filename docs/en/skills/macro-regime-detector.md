@@ -14,7 +14,7 @@ permalink: /en/skills/macro-regime-detector/
 Detect structural macro regime transitions (1-2 year horizon) using cross-asset ratio analysis. Analyze RSP/SPY concentration, yield curve, credit conditions, size factor, equity-bond relationship, and sector rotation to identify regime shifts between Concentration, Broadening, Contraction, Inflationary, and Transitional states. Run when user asks about macro regime, market regime change, structural rotation, or long-term market positioning.
 {: .fs-6 .fw-300 }
 
-<span class="badge badge-api">FMP Required</span>
+<span class="badge badge-free">No API</span> <span class="badge badge-optional">FMP Optional</span>
 
 [Download Skill Package (.skill)](https://github.com/tradermonty/claude-trading-skills/raw/main/skill-packages/macro-regime-detector.skill){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [View Source on GitHub](https://github.com/tradermonty/claude-trading-skills/tree/main/skills/macro-regime-detector){: .btn .fs-5 .mb-4 .mb-md-0 }
@@ -46,14 +46,16 @@ Detect structural macro regime transitions (1-2 year horizon) using cross-asset 
 
 ## 3. Prerequisites
 
-- **FMP API Key** (required): Set `FMP_API_KEY` environment variable or pass `--api-key`
-- Free tier (250 calls/day) is sufficient (script uses ~10 calls)
+- **Python dependencies** (required): install `skills/macro-regime-detector/requirements.txt`, including yfinance and requests
+- **FMP API Key** (optional): set `FMP_API_KEY` or pass `--api-key` to use FMP and Treasury data before the yfinance/SHY-TLT fallbacks
+- The FMP free tier may not serve every ETF; unavailable symbols automatically use yfinance
 
 ---
 
 ## 4. Quick Start
 
 ```bash
+python3 -m pip install -r skills/macro-regime-detector/requirements.txt
 python3 skills/macro-regime-detector/scripts/macro_regime_detector.py
 ```
 
@@ -69,7 +71,9 @@ python3 skills/macro-regime-detector/scripts/macro_regime_detector.py
    ```bash
    python3 skills/macro-regime-detector/scripts/macro_regime_detector.py
    ```
-   This fetches 600 days of data for 9 ETFs + Treasury rates (10 API calls total).
+   This fetches 600 days of data for 9 ETFs. With an FMP key, the client tries FMP first and fetches Treasury rates, then falls back to yfinance for unavailable ETF history. Without a key, it runs in yfinance-only mode and uses SHY/TLT as the yield-curve fallback.
+
+   The detector exits non-zero and writes no report when none of its six components has usable data. Do not interpret a missing report as a valid low-transition regime.
 
 3. Read the generated Markdown report and present findings to user.
 

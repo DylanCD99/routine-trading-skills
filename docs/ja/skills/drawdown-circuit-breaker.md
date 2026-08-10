@@ -81,7 +81,9 @@ python3 skills/drawdown-circuit-breaker/scripts/check_circuit_breaker.py \
 
 スクリプトはすべての `th_*.yaml` を走査し、各 thesis の `status_history[]` ledger から `realized_pnl` を読みます。`_index.json` は P&L 計算に使いません。インデックスは軽量な検索用ファイルであり、部分クローズや日次実現損益に必要な台帳を持たないためです。
 
-state directory が存在しない、または空の場合は、`data_quality: EMPTY_STATE` とともに `TRADING_ALLOWED` を返します。履歴がまだない新規ユーザーをブロックしないためです。
+state directory が存在しない、または存在する空ディレクトリの場合は、`data_quality: EMPTY_STATE` とともに `TRADING_ALLOWED` を返します。履歴がまだない新規ユーザーをブロックしないためです。指定された state path が存在する一方でディレクトリではない場合は、不完全な state data として fail closed します。
+
+state が存在する一方で thesis、ledger event、terminal result のいずれかを読み飛ばした場合、または記録値が競合する場合は、`data_quality: PARTIAL`、`recommendation: HALTED`、`incomplete_state_data` rule を返して fail closed にします。warning を修復して再実行するまで新規リスクを取りません。唯一の復元可能な例外は、realized-P&L ledger entry がない旧形式の terminal thesis で、有限値の `outcome.pnl_dollars` と解析可能な terminal history がある場合です。この場合は監査用に `PARTIAL` を残しつつ、それ単独では計算済み recommendation を上書きしません。`ACTIVE`、`PARTIALLY_CLOSED`、`CLOSED`、`INVALIDATED` の thesis では、各 history event が object であり、認識済みの `status` と解析可能な `at` を持ち、最後の history status が thesis status と一致している必要があります。`ACTIVE` と `PARTIALLY_CLOSED` の thesis は entry actuals を持ち、`PARTIALLY_CLOSED` の thesis は position も持つ必要があります。malformed、古い、または骨格だけの lifecycle history は terminal fallback を無効にして halt します。ledger の形をした event の `realized_pnl` が欠落・型不正・非 finite の場合も、値を強制変換せず halt します。
 
 ### Step 2: サーキットブレーカールールを評価する
 
@@ -144,9 +146,11 @@ CLI引数は config ファイルの値より優先されます。
 |----------------|------|
 | TRADING_ALLOWED | 有効なサーキットブレーカールールはなく、次のワークフローに進める |
 | COOLDOWN | 新規ポジションは取らず、既存ポジション管理と直近損失のレビューに集中する |
-| HALTED | 有効期限まで新規エントリーを停止し、レビューに集中する |
+| HALTED | drawdown limit が有効、または口座state dataが不完全なため新規エントリーを止める。data warning を修復・再実行してから進む |
 
 既存ポジションの管理は人間が判断します。このスキルは、実現損失後に新規リスクを積み増すことを防ぐためのゲートです。
+
+時間ベースのruleはISO 8601形式の `active_until` を持ちます。時間で解除できない `incomplete_state_data` は `active_until: null` とし、Markdown reportにはstateを修復してdecisionを再実行するまでhaltが続くと表示します。
 
 ---
 
@@ -206,4 +210,4 @@ CLI引数は config ファイルの値より優先されます。
 1. **実現損益のみを見る** - 日次計算には記録済みの `realized_pnl` を使い、未実現損益や thesis 単位の累計だけに依存しない。
 2. **生存を優先する** - サーキットブレーカーは損失後のエスカレーションを止めるためにある。
 3. **助言であり自動執行ではない** - 出力は workflow gate に使うが、注文の発注、取消、ブロックは行わない。
-4. **段階的に劣化する** - 空 state は許可し、壊れたローカルファイルは `PARTIAL` として記録しつつクラッシュを避ける。
+4. **不完全なstateではfail closedにする** - 空stateは新規ユーザー向けに許可するが、破損、読み飛ばし、競合、非finiteのrisk dataはクラッシュせず `PARTIAL` + `HALTED` を返す。有限値の旧形式outcome fallbackはrecoverableな `PARTIAL` として記録し、blockingにはしない。

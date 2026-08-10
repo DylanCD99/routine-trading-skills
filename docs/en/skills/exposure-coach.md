@@ -106,6 +106,8 @@ python3 skills/exposure-coach/scripts/calculate_exposure.py \
 
 The script accepts partial inputs; missing files reduce confidence but do not block execution.
 
+Canonical macro-regime reports must include nested `regime.confidence` and `composite.data_quality` with valid integer component counts. Missing or malformed availability metadata, `very_low` confidence, and zero usable components are treated as missing critical input. They do not contribute a regime score or bias, and the normal missing-input haircut and confidence cap apply. Never override this degradation by manually copying the report's regime label into the exposure decision.
+
 ### Step 3: Interpret the Market Posture Summary
 
 Review the generated posture report containing:

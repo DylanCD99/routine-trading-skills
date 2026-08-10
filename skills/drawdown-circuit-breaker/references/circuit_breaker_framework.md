@@ -59,10 +59,14 @@ Include every active triggered rule in the JSON artifact even when a stricter ru
 | Value | Meaning |
 |-------|---------|
 | `OK` | State directory existed, thesis files loaded, and no malformed ledger or terminal records were skipped |
-| `EMPTY_STATE` | State directory was missing or contained no `th_*.yaml` files |
-| `PARTIAL` | At least one thesis file, ledger entry, or terminal result was malformed and skipped |
+| `EMPTY_STATE` | State directory was missing, or it was an existing directory containing no `th_*.yaml` files |
+| `PARTIAL` | At least one data warning was emitted, including skipped/conflicting risk data or a recovered finite legacy outcome |
 
 `EMPTY_STATE` returns `TRADING_ALLOWED`. The skill should not block a new user just because no trader-memory-core state exists yet.
+
+`PARTIAL` fails closed with `HALTED` and an `incomplete_state_data` rule whenever the configured state path is not a directory, or whenever a thesis, ledger entry, or terminal result is skipped, malformed, non-finite, missing, or conflicts with another P&L source. Its `active_until` is `null` because release requires state repair and a rerun, not elapsed time. The sole recoverable warning is a finite `outcome.pnl_dollars` value used for a legacy terminal thesis that has no realized-P&L ledger entry and otherwise has parseable terminal history. For `ACTIVE`, `PARTIALLY_CLOSED`, `CLOSED`, and `INVALIDATED` theses, every history event must be an object with a recognized `status` and parseable `at`, and the last history status must match the thesis status. `ACTIVE` and `PARTIALLY_CLOSED` theses must also carry entry actuals; `PARTIALLY_CLOSED` must carry a position. Malformed, stale, or skeletal lifecycle history disqualifies the fallback and halts. Ledger-shaped events -- `status: PARTIALLY_CLOSED`, or any of `shares_sold`, `quantity_sold`, `price`, `proceeds` -- whose `realized_pnl` is missing, untyped, or non-finite also halt instead of being coerced. The recoverable fallback remains `PARTIAL` for audit visibility but does not by itself change the calculated recommendation.
+
+Account size and all percentage/hour thresholds must be positive and finite. Non-finite P&L never enters metrics or terminal streak calculations, and JSON output is serialized with non-finite values disabled.
 
 ## Configuration
 
