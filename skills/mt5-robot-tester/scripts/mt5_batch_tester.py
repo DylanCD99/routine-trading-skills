@@ -640,23 +640,18 @@ class Pipeline:
     def _collect_report(self, src: Path, name: str, stub: str) -> Path:
         """Move the report (and its .png graph) from the data folder to output."""
         dest = self.reports_dir / f"{name}__{stub}{src.suffix}"
-        if dest.exists():
-            self.log(f"[{name}] warning: destination report already exists: {dest}")
-            return src
         try:
-            self._move_exclusive(src, dest)
-        except OSError:
-            return src
+            self._replace_from_source(src, dest)
+        except OSError as exc:
+            self.log(f"[{name}] report collection failed: {exc}")
+            raise
         png = src.with_suffix(".png")
         if png.exists():
             png_dest = self.reports_dir / f"{name}__{stub}.png"
-            if png_dest.exists():
-                self.log(f"[{name}] warning: destination chart already exists: {png_dest}")
-                return dest
             try:
-                self._move_exclusive(png, png_dest)
-            except OSError:
-                pass
+                self._replace_from_source(png, png_dest)
+            except OSError as exc:
+                self.log(f"[{name}] warning: chart collection failed: {exc}")
         return dest
 
     def _run(self, ini_text: str, name: str, stub: str, report_name: str, exts) -> tuple:
@@ -668,7 +663,10 @@ class Pipeline:
         )
         report = None
         if status == "ok" and src:
-            report = self._collect_report(src, name, stub)
+            try:
+                report = self._collect_report(src, name, stub)
+            except OSError:
+                status = "report_collection_failed"
         else:
             tail = self.tester_log_tail()
             if tail:
@@ -936,6 +934,11 @@ class Pipeline:
         st["verdict"] = verdict
         st["reason"] = reason
         self.learn.record_bot(name, verdict, reason)
+        # Persist learned evidence before an irreversible candidate move.  The
+        # outer loop saves again after return to include any normalized error
+        # outcome, but this checkpoint prevents a moved bot from losing its
+        # learning record if the run is interrupted between bots.
+        self.learn.save(markdown_path=self._learn_md)
         self.log(f"[{name}] => {verdict.upper()} ({reason})")
         if verdict == "error":
             st["status"] = "error"
@@ -992,6 +995,35 @@ class Pipeline:
             except OSError:
                 pass
             raise
+
+    @staticmethod
+    def _replace_from_source(source: Path, destination: Path) -> None:
+        """Atomically replace a generated artifact, then remove its source."""
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(
+            dir=str(destination.parent), suffix=f"{destination.suffix}.report.tmp"
+        )
+        try:
+            with source.open("rb") as src, os.fdopen(fd, "wb") as dest:
+                fd = -1
+                shutil.copyfileobj(src, dest)
+                dest.flush()
+                os.fsync(dest.fileno())
+            shutil.copystat(source, temporary)
+            os.replace(temporary, destination)
+            try:
+                source.unlink()
+            except OSError:
+                pass
+        except BaseException:
+            if fd >= 0:
+                os.close(fd)
+            raise
+        finally:
+            try:
+                Path(temporary).unlink()
+            except FileNotFoundError:
+                pass
 
     def _move_bot(self, ex5: Path, verdict: str, optimized_set: list | None) -> tuple[bool, str]:
         """Copy/move one bot fail-closed, without overwriting user files."""
@@ -1320,9 +1352,10 @@ def main(argv: list[str] | None = None) -> int:
         pipe.log(f"Terminal: {terminal}")
         pipe.log(f"Candidates: {candidates_dir} ({len(bots)} bots)")
 
+        failed_bots: list[str] = []
         for ex5 in bots:
             try:
-                pipe.process_bot(ex5)
+                state = pipe.process_bot(ex5)
             except TerminalTerminationError as error:
                 # Block reuse first while this process still holds the OS lock.
                 # Output logging/checkpointing can fail independently (for
@@ -1344,11 +1377,22 @@ def main(argv: list[str] | None = None) -> int:
                 st = pipe.state["bots"].setdefault(ex5.stem, {})
                 st.update({"status": "error", "verdict": "error", "reason": str(e)})
                 pipe._save_state()
+                state = st
 
-        pipe.learn.save(markdown_path=pipe._learn_md)
+            if state.get("status") != "done":
+                failed_bots.append(ex5.stem)
+                pipe.learn.record_bot(
+                    ex5.stem,
+                    "error",
+                    state.get("move_error") or state.get("reason") or state.get("status", "error"),
+                )
+            pipe.learn.save(markdown_path=pipe._learn_md)
+
         md, js = pipe.write_leaderboard()
         pipe.log(f"Leaderboard: {md}")
         pipe.log(f"Learnings:   {pipe.learn.path}")
+        if failed_bots:
+            pipe.log(f"Completed with bot errors: {', '.join(failed_bots)}")
     except TerminalTerminationError as error:
         blocker = lock_blocker_path(lock)
         if not blocker.exists():
@@ -1360,6 +1404,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     finally:
         release_lock(lock_handle)
+    if failed_bots:
+        print(f"error: {len(failed_bots)} bot(s) failed: {', '.join(failed_bots)}", file=sys.stderr)
+        return 1
     return 0
 
 

@@ -625,6 +625,100 @@ def test_fatal_blocker_survives_output_reporting_failure(tmp_path, monkeypatch, 
     assert not list((tmp_path / "output").glob("leaderboard_*"))
 
 
+def test_main_processes_all_bots_but_returns_nonzero_when_any_bot_fails(tmp_path, monkeypatch):
+    candidates = tmp_path / "MQL5" / "Experts" / "candidates"
+    candidates.mkdir(parents=True)
+    for name in ("A.ex5", "B.ex5"):
+        (candidates / name).write_bytes(name.encode())
+    config = tmp_path / "config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "folders": {
+                    "candidates": str(candidates),
+                    "in_testing": str(tmp_path / "in-testing"),
+                    "finalists": str(tmp_path / "finalists"),
+                },
+                "common": {"symbols": ["EURUSD"]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    processed = []
+
+    def fail_bot(self, ex5):
+        processed.append(ex5.stem)
+        state = {"status": "error", "verdict": "error", "reason": "invalid_report"}
+        self.state["bots"][ex5.stem] = state
+        self._save_state()
+        return state
+
+    monkeypatch.setattr(
+        batch, "find_terminal", lambda _explicit, _configured: tmp_path / "terminal64.exe"
+    )
+    monkeypatch.setattr(Pipeline, "process_bot", fail_bot)
+
+    output = tmp_path / "output"
+    result = main(["--config", str(config), "--output-dir", str(output)])
+
+    assert result == 1
+    assert processed == ["A", "B"]
+    learnings = json.loads((output / "learnings.json").read_text(encoding="utf-8"))
+    assert set(learnings["bots"]) == {"A", "B"}
+
+
+def test_main_persists_each_bots_learnings_before_the_next_bot(tmp_path, monkeypatch):
+    candidates = tmp_path / "MQL5" / "Experts" / "candidates"
+    candidates.mkdir(parents=True)
+    for name in ("A.ex5", "B.ex5"):
+        (candidates / name).write_bytes(name.encode())
+    config = tmp_path / "config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "folders": {
+                    "candidates": str(candidates),
+                    "in_testing": str(tmp_path / "in-testing"),
+                    "finalists": str(tmp_path / "finalists"),
+                },
+                "common": {"symbols": ["EURUSD"]},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def interrupt_after_first(self, ex5):
+        if ex5.stem == "B":
+            raise KeyboardInterrupt
+        self.learn.record_best_pair("EURUSD", 123.0)
+        self.learn.record_bot("A", "rejected", "gate")
+        state = {"status": "done", "verdict": "rejected", "reason": "gate"}
+        self.state["bots"]["A"] = state
+        self._save_state()
+        destination = self.in_testing / ex5.name
+        destination.parent.mkdir(parents=True)
+        ex5.replace(destination)
+        return state
+
+    monkeypatch.setattr(
+        batch, "find_terminal", lambda _explicit, _configured: tmp_path / "terminal64.exe"
+    )
+    monkeypatch.setattr(Pipeline, "process_bot", interrupt_after_first)
+
+    output = tmp_path / "output"
+    with pytest.raises(KeyboardInterrupt):
+        main(["--config", str(config), "--output-dir", str(output)])
+
+    learnings = json.loads((output / "learnings.json").read_text(encoding="utf-8"))
+    assert learnings["bots"]["A"]["verdict"] == "rejected"
+    assert learnings["symbols"]["EURUSD"] == {
+        "best_pair_count": 1,
+        "profit_sum": 123.0,
+        "profit_count": 1,
+    }
+    assert not (candidates / "A.ex5").exists()
+
+
 def test_optimize_param_ini_range_syntax(tmp_path):
     strategy_params = [("GannHiLoPeriod1", 86), ("PriceEntryMult1", 1.5)]
     ini = build_optimize_param_ini(
@@ -657,6 +751,77 @@ def _pipeline(tmp_path):
     }
     pipe = Pipeline(config, tmp_path / "output", None, 5, False, False)
     return pipe, candidates, in_testing, finalists
+
+
+def test_collect_report_atomically_replaces_a_previous_run(tmp_path):
+    pipe, *_ = _pipeline(tmp_path)
+    source = tmp_path / "data" / "new-report.htm"
+    source.write_bytes(b"new report")
+    destination = pipe.reports_dir / "Bot__R2.htm"
+    destination.write_bytes(b"old report")
+
+    collected = pipe._collect_report(source, "Bot", "R2")
+
+    assert collected == destination
+    assert destination.read_bytes() == b"new report"
+    assert not source.exists()
+
+
+def test_collect_report_failure_preserves_old_and_new_reports(tmp_path, monkeypatch):
+    pipe, *_ = _pipeline(tmp_path)
+    source = tmp_path / "data" / "new-report.htm"
+    source.write_bytes(b"new report")
+    destination = pipe.reports_dir / "Bot__R2.htm"
+    destination.write_bytes(b"old report")
+    real_replace = batch.os.replace
+
+    def fail_destination_replace(source_path, destination_path):
+        if Path(destination_path) == destination:
+            raise OSError("replace failed")
+        return real_replace(source_path, destination_path)
+
+    monkeypatch.setattr(batch.os, "replace", fail_destination_replace)
+
+    with pytest.raises(OSError, match="replace failed"):
+        pipe._collect_report(source, "Bot", "R2")
+
+    assert destination.read_bytes() == b"old report"
+    assert source.read_bytes() == b"new report"
+
+
+def test_run_fails_closed_when_report_cannot_be_collected(tmp_path, monkeypatch):
+    pipe, *_ = _pipeline(tmp_path)
+    source = tmp_path / "data" / "new-report.htm"
+    source.write_bytes(b"new report")
+    monkeypatch.setattr(batch, "run_tester", lambda *_args: (source, "ok"))
+    monkeypatch.setattr(
+        pipe,
+        "_collect_report",
+        lambda *_args: (_ for _ in ()).throw(OSError("replace failed")),
+    )
+
+    report, status, _ini = pipe._run("[Tester]\n", "Bot", "R2", "report", (".htm",))
+
+    assert report is None
+    assert status == "report_collection_failed"
+
+
+def test_finish_persists_learnings_before_moving_candidate(tmp_path, monkeypatch):
+    pipe, candidates, *_ = _pipeline(tmp_path)
+    bot = candidates / "Bot.ex5"
+    bot.write_bytes(b"candidate")
+
+    def interrupt_move(*_args):
+        persisted = json.loads(pipe.learn.path.read_text(encoding="utf-8"))
+        assert persisted["bots"]["Bot"]["verdict"] == "rejected"
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(pipe, "_move_bot", interrupt_move)
+
+    with pytest.raises(KeyboardInterrupt):
+        pipe._finish("Bot", "rejected", "gate", {}, ex5=bot)
+
+    assert bot.exists()
 
 
 def test_move_bot_reports_missing_folder_configuration_in_english(tmp_path):
