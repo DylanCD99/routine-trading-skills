@@ -648,6 +648,8 @@ def test_main_processes_all_bots_but_returns_nonzero_when_any_bot_fails(tmp_path
 
     def fail_bot(self, ex5):
         processed.append(ex5.stem)
+        if ex5.stem == "A":
+            raise RuntimeError("unexpected bot failure")
         state = {"status": "error", "verdict": "error", "reason": "invalid_report"}
         self.state["bots"][ex5.stem] = state
         self._save_state()
