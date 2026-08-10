@@ -1,0 +1,352 @@
+schema_version: 1
+audit:
+  baseline_commit: 7a5457ff404bc16a3764db7d16494db84144baf9  # pragma: allowlist secret
+  assessed_at: '2026-08-09'
+  scope: Conservative metadata backfill for production skills present at the baseline commit.
+external_release_gates:
+  open_high_severity_issues:
+    status: not_evaluated
+    checked_at: null
+    query: GET /repos/tradermonty/claude-trading-skills/issues?state=open; exclude pull requests and triage P0/high-severity applicability per skill
+    rationale: Live issue state is intentionally not frozen into an eight-axis metadata value; check it before a production release decision.
+profiles:
+  executable_workflow_trading:
+    axes:
+      instruction_contract:
+        value: not_verified
+        rationale: Legacy production status did not retain a per-skill, commit-pinned instruction-contract audit.
+        evidence: []
+      unit_tests:
+        value: not_verified
+        rationale: Test presence or a green aggregate run does not prove every executable script has happy, boundary, error-path, and fail-closed coverage.
+        evidence:
+        - issue: https://github.com/tradermonty/claude-trading-skills/issues/293
+      workflow_contract:
+        value: not_verified
+        rationale: The skill is referenced by a canonical workflow, but no complete skill handoff contract audit is recorded.
+        evidence: []
+      end_to_end_replay:
+        value: not_verified
+        rationale: Canonical workflow replay evidence is not complete.
+        evidence:
+        - issue: https://github.com/tradermonty/claude-trading-skills/issues/294
+      data_provenance:
+        value: not_verified
+        rationale: No per-skill audit proves output schemas record data sources and as-of timestamps on every applicable path.
+        evidence: []
+      financial_logic_review:
+        value: not_verified
+        rationale: No per-skill financial-logic audit proves validation of money, price, quantity, date, unit, currency, non-finite, negative, and extreme inputs.
+        evidence: []
+      empirical_validation:
+        value: not_verified
+        rationale: No per-skill empirical validation record is pinned to this baseline commit.
+        evidence: []
+      security_review:
+        value: not_verified
+        rationale: Repository SAST and secret scans are not a substitute for a per-skill security review and live high-severity issue check.
+        evidence:
+        - path: .github/workflows/ci.yml
+          job: security
+  executable_standalone_trading:
+    axes:
+      instruction_contract:
+        value: not_verified
+        rationale: Legacy production status did not retain a per-skill, commit-pinned instruction-contract audit.
+        evidence: []
+      unit_tests:
+        value: not_verified
+        rationale: Test presence or a green aggregate run does not prove every executable script has happy, boundary, error-path, and fail-closed coverage.
+        evidence:
+        - issue: https://github.com/tradermonty/claude-trading-skills/issues/293
+      workflow_contract:
+        value: not_applicable
+        rationale: The skill is not referenced by a canonical workflow in skills-index.yaml.
+        evidence: []
+      end_to_end_replay:
+        value: not_applicable
+        rationale: The skill is not referenced by a canonical workflow, so workflow replay does not apply.
+        evidence: []
+      data_provenance:
+        value: not_verified
+        rationale: No per-skill audit proves output schemas record data sources and as-of timestamps on every applicable path.
+        evidence: []
+      financial_logic_review:
+        value: not_verified
+        rationale: No per-skill financial-logic audit proves validation of money, price, quantity, date, unit, currency, non-finite, negative, and extreme inputs.
+        evidence: []
+      empirical_validation:
+        value: not_verified
+        rationale: No per-skill empirical validation record is pinned to this baseline commit.
+        evidence: []
+      security_review:
+        value: not_verified
+        rationale: Repository SAST and secret scans are not a substitute for a per-skill security review and live high-severity issue check.
+        evidence:
+        - path: .github/workflows/ci.yml
+          job: security
+  knowledge_standalone_trading:
+    axes:
+      instruction_contract:
+        value: not_verified
+        rationale: Legacy production status did not retain a per-skill, commit-pinned instruction-contract audit.
+        evidence: []
+      unit_tests:
+        value: not_applicable
+        rationale: The skill has no executable Python helper scripts under skills/<id>/scripts/.
+        evidence: []
+      workflow_contract:
+        value: not_applicable
+        rationale: The skill is not referenced by a canonical workflow in skills-index.yaml.
+        evidence: []
+      end_to_end_replay:
+        value: not_applicable
+        rationale: The skill is not referenced by a canonical workflow, so workflow replay does not apply.
+        evidence: []
+      data_provenance:
+        value: not_verified
+        rationale: No per-skill audit proves output schemas record data sources and as-of timestamps on every applicable path.
+        evidence: []
+      financial_logic_review:
+        value: not_verified
+        rationale: No per-skill financial-logic audit proves validation of money, price, quantity, date, unit, currency, non-finite, negative, and extreme inputs.
+        evidence: []
+      empirical_validation:
+        value: not_verified
+        rationale: No per-skill empirical validation record is pinned to this baseline commit.
+        evidence: []
+      security_review:
+        value: not_verified
+        rationale: Repository SAST and secret scans are not a substitute for a per-skill security review and live high-severity issue check.
+        evidence:
+        - path: .github/workflows/ci.yml
+          job: security
+  meta_workflow:
+    axes:
+      instruction_contract:
+        value: not_verified
+        rationale: Legacy production status did not retain a per-skill, commit-pinned instruction-contract audit.
+        evidence: []
+      unit_tests:
+        value: not_verified
+        rationale: Test presence or a green aggregate run does not prove every executable script has happy, boundary, error-path, and fail-closed coverage.
+        evidence:
+        - issue: https://github.com/tradermonty/claude-trading-skills/issues/293
+      workflow_contract:
+        value: not_verified
+        rationale: The skill is referenced by a canonical workflow, but no complete skill handoff contract audit is recorded.
+        evidence: []
+      end_to_end_replay:
+        value: not_verified
+        rationale: Canonical workflow replay evidence is not complete.
+        evidence:
+        - issue: https://github.com/tradermonty/claude-trading-skills/issues/294
+      data_provenance:
+        value: not_applicable
+        rationale: This repository-maintenance skill does not consume or emit market-data claims requiring source/as-of provenance.
+        evidence: []
+      financial_logic_review:
+        value: not_applicable
+        rationale: This repository-maintenance skill contains no trading financial logic.
+        evidence: []
+      empirical_validation:
+        value: not_applicable
+        rationale: This repository-maintenance skill makes no predictive or performance claim requiring empirical validation.
+        evidence: []
+      security_review:
+        value: not_verified
+        rationale: Repository SAST and secret scans are not a substitute for a per-skill security review and live high-severity issue check.
+        evidence:
+        - path: .github/workflows/ci.yml
+          job: security
+  meta_standalone:
+    axes:
+      instruction_contract:
+        value: not_verified
+        rationale: Legacy production status did not retain a per-skill, commit-pinned instruction-contract audit.
+        evidence: []
+      unit_tests:
+        value: not_verified
+        rationale: Test presence or a green aggregate run does not prove every executable script has happy, boundary, error-path, and fail-closed coverage.
+        evidence:
+        - issue: https://github.com/tradermonty/claude-trading-skills/issues/293
+      workflow_contract:
+        value: not_applicable
+        rationale: The skill is not referenced by a canonical workflow in skills-index.yaml.
+        evidence: []
+      end_to_end_replay:
+        value: not_applicable
+        rationale: The skill is not referenced by a canonical workflow, so workflow replay does not apply.
+        evidence: []
+      data_provenance:
+        value: not_verified
+        rationale: No per-skill audit proves output schemas record data sources and as-of timestamps on every applicable path.
+        evidence: []
+      financial_logic_review:
+        value: not_verified
+        rationale: No per-skill financial-logic audit proves validation of money, price, quantity, date, unit, currency, non-finite, negative, and extreme inputs.
+        evidence: []
+      empirical_validation:
+        value: not_applicable
+        rationale: This repository-maintenance skill makes no predictive or performance claim requiring empirical validation.
+        evidence: []
+      security_review:
+        value: not_verified
+        rationale: Repository SAST and secret scans are not a substitute for a per-skill security review and live high-severity issue check.
+        evidence:
+        - path: .github/workflows/ci.yml
+          job: security
+  meta_data_standalone:
+    axes:
+      instruction_contract:
+        value: not_verified
+        rationale: Legacy production status did not retain a per-skill, commit-pinned instruction-contract audit.
+        evidence: []
+      unit_tests:
+        value: not_verified
+        rationale: Test presence or a green aggregate run does not prove every executable script has happy, boundary, error-path, and fail-closed coverage.
+        evidence:
+        - issue: https://github.com/tradermonty/claude-trading-skills/issues/293
+      workflow_contract:
+        value: not_applicable
+        rationale: The skill is not referenced by a canonical workflow in skills-index.yaml.
+        evidence: []
+      end_to_end_replay:
+        value: not_applicable
+        rationale: The skill is not referenced by a canonical workflow, so workflow replay does not apply.
+        evidence: []
+      data_provenance:
+        value: not_verified
+        rationale: No per-skill audit proves output schemas record data sources and as-of timestamps on every applicable path.
+        evidence: []
+      financial_logic_review:
+        value: not_verified
+        rationale: No per-skill financial-logic audit proves validation of money, price, quantity, date, unit, currency, non-finite, negative, and extreme inputs.
+        evidence: []
+      empirical_validation:
+        value: not_applicable
+        rationale: This repository-maintenance skill makes no predictive or performance claim requiring empirical validation.
+        evidence: []
+      security_review:
+        value: not_verified
+        rationale: Repository SAST and secret scans are not a substitute for a per-skill security review and live high-severity issue check.
+        evidence:
+        - path: .github/workflows/ci.yml
+          job: security
+skills:
+- id: backtest-expert
+  profile: executable_workflow_trading
+- id: breadth-chart-analyst
+  profile: executable_standalone_trading
+- id: breakout-trade-planner
+  profile: executable_workflow_trading
+- id: canslim-screener
+  profile: executable_workflow_trading
+- id: cot-contrarian-detector
+  profile: executable_workflow_trading
+- id: data-quality-checker
+  profile: meta_standalone
+- id: dividend-growth-pullback-screener
+  profile: executable_workflow_trading
+- id: downtrend-duration-analyzer
+  profile: executable_standalone_trading
+- id: dual-axis-skill-reviewer
+  profile: meta_workflow
+- id: earnings-calendar
+  profile: meta_data_standalone
+- id: earnings-trade-analyzer
+  profile: executable_standalone_trading
+- id: economic-calendar-fetcher
+  profile: meta_data_standalone
+- id: edge-candidate-agent
+  profile: executable_standalone_trading
+- id: edge-concept-synthesizer
+  profile: executable_standalone_trading
+- id: edge-hint-extractor
+  profile: executable_standalone_trading
+- id: edge-pipeline-orchestrator
+  profile: executable_standalone_trading
+- id: edge-signal-aggregator
+  profile: executable_standalone_trading
+- id: edge-strategy-designer
+  profile: executable_standalone_trading
+- id: edge-strategy-reviewer
+  profile: executable_standalone_trading
+- id: exposure-coach
+  profile: executable_workflow_trading
+- id: finviz-screener
+  profile: executable_standalone_trading
+- id: ftd-detector
+  profile: executable_standalone_trading
+- id: ibd-distribution-day-monitor
+  profile: executable_standalone_trading
+- id: institutional-flow-tracker
+  profile: executable_standalone_trading
+- id: kanchi-dividend-review-monitor
+  profile: executable_workflow_trading
+- id: kanchi-dividend-sop
+  profile: executable_workflow_trading
+- id: kanchi-dividend-us-tax-accounting
+  profile: executable_workflow_trading
+- id: macro-regime-detector
+  profile: executable_workflow_trading
+- id: market-breadth-analyzer
+  profile: executable_workflow_trading
+- id: market-environment-analysis
+  profile: executable_standalone_trading
+- id: market-news-analyst
+  profile: knowledge_standalone_trading
+- id: market-top-detector
+  profile: executable_workflow_trading
+- id: news-reaction-failure-analyzer
+  profile: executable_workflow_trading
+- id: options-strategy-advisor
+  profile: executable_standalone_trading
+- id: pair-trade-screener
+  profile: executable_standalone_trading
+- id: parabolic-short-trade-planner
+  profile: executable_standalone_trading
+- id: pead-screener
+  profile: executable_standalone_trading
+- id: portfolio-manager
+  profile: executable_workflow_trading
+- id: position-sizer
+  profile: executable_workflow_trading
+- id: scenario-analyzer
+  profile: knowledge_standalone_trading
+- id: sector-analyst
+  profile: executable_standalone_trading
+- id: signal-postmortem
+  profile: executable_workflow_trading
+- id: skill-designer
+  profile: meta_standalone
+- id: skill-idea-miner
+  profile: meta_standalone
+- id: skill-integration-tester
+  profile: meta_standalone
+- id: stanley-druckenmiller-investment
+  profile: executable_standalone_trading
+- id: strategy-pivot-designer
+  profile: executable_standalone_trading
+- id: technical-analyst
+  profile: executable_workflow_trading
+- id: theme-detector
+  profile: executable_workflow_trading
+- id: trade-hypothesis-ideator
+  profile: executable_standalone_trading
+- id: trader-memory-core
+  profile: executable_workflow_trading
+- id: trading-skills-navigator
+  profile: meta_standalone
+- id: uptrend-analyzer
+  profile: executable_workflow_trading
+- id: us-market-bubble-detector
+  profile: executable_standalone_trading
+- id: us-stock-analysis
+  profile: knowledge_standalone_trading
+- id: value-dividend-screener
+  profile: executable_workflow_trading
+- id: vcp-screener
+  profile: executable_workflow_trading
+- id: weekly-performance-digest
+  profile: executable_workflow_trading

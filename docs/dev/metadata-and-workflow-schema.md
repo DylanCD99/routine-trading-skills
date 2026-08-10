@@ -35,6 +35,15 @@ skills:
     display_name: <Human Title>
     category: <one of categories>
     status: production | beta | experimental | deprecated
+    verification:
+      instruction_contract: passed | not_verified | not_applicable
+      unit_tests: passed | not_verified | not_applicable
+      workflow_contract: passed | not_verified | not_applicable
+      end_to_end_replay: passed | not_verified | not_applicable
+      data_provenance: passed | not_verified | not_applicable
+      financial_logic_review: passed | not_verified | not_applicable
+      empirical_validation: passed | not_verified | not_applicable
+      security_review: passed | not_verified | not_applicable
     summary: >-
       One-sentence description.
 
@@ -70,14 +79,26 @@ skills:
 |---|---|
 | `timeframe` | One of the enum values. `unknown` allowed under `default` / `--strict-workflows` (warn); rejected under `--strict-metadata`. |
 | `difficulty` | One of the enum values. `unknown` allowed under `default` / `--strict-workflows` (warn); rejected under `--strict-metadata`. |
-| `integrations` | List form (see §1.3). May be empty for skills with no dependencies, but prefer `[{id: local_calculation, type: calculation, requirement: not_required}]`. |
+| `integrations` | List form (see §1.4). May be empty for skills with no dependencies, but prefer `[{id: local_calculation, type: calculation, requirement: not_required}]`. |
 | `inputs` | List of strings. Empty list (`[]`) allowed under `default` / `--strict-workflows` (warn); `--strict-metadata` requires at least one entry. |
 | `outputs` | List of strings. Empty list (`[]`) allowed under `default` / `--strict-workflows` (warn); `--strict-metadata` requires at least one entry. |
 | `workflows` | List of workflow IDs. Default mode warns on missing files; `--strict-workflows` errors. |
 
 As of 2026-05-12 the canonical `skills-index.yaml` populates `timeframe`, `difficulty`, `inputs`, and `outputs` for all 54 skills, and `--strict-metadata` is enforced in CI + the pre-push hook. New skill entries must satisfy `--strict-metadata` to merge.
 
-### 1.3 `integrations` schema
+### 1.3 `verification` schema
+
+The block has exactly eight axes. Values are `passed`, `not_verified`, or `not_applicable`.
+Production entries must include the complete block. A missing production block is a warning in
+default and `--strict-workflows` modes and an error under `--strict-metadata`. If any entry includes
+the block, its type, exact keys, and enum values are hard-validated in every mode (`IDX013`).
+Non-production entries may omit it, but partial declarations are not allowed.
+
+The extension is additive and keeps `schema_version: 1`; existing fields are not repurposed. See
+[`production-verification.md`](production-verification.md) for the evidence rules, axis criteria,
+baseline, and live issue gate.
+
+### 1.4 `integrations` schema
 
 ```yaml
 integrations:
@@ -119,7 +140,7 @@ integrations:
 - `type: calculation` — skill performs deterministic local computation. Pair with `id: local_calculation` and `requirement: not_required`. Use this for `position-sizer` and similar pure-compute skills.
 - `type: none` — explicit "no integration record applies". Reserved for edge cases. Prefer `calculation` whenever the skill does any computation.
 
-### 1.4 `workflows` field semantics
+### 1.5 `workflows` field semantics
 
 Each entry is a `workflow id` (= filename in `workflows/` minus `.yaml`).
 
@@ -128,7 +149,7 @@ Each entry is a `workflow id` (= filename in `workflows/` minus `.yaml`).
 
 This field is the back-reference. The forward reference (workflow → skill) is in each `workflows/<id>.yaml`'s `required_skills` / `optional_skills` / `steps`.
 
-### 1.5 Governance rules
+### 1.6 Governance rules
 
 1. **`display_name` is index-owned.** Validator does NOT cross-check it against `SKILL.md` frontmatter. Only `id` ↔ frontmatter `name` parity is enforced.
 2. **Deprecated skills stay in the index.** `status: deprecated` entries remain. They are excluded from `.skill` bundles and from any workflow's `required_skills`, but they remain queryable. Skills physically removed from `skills/` are also removed from the index.
@@ -422,6 +443,7 @@ python3 scripts/validate_skills_index.py --strict-metadata
 | Code | Meaning |
 |---|---|
 | `IDX012` | Integration uses an `unknown` marker (`id` / `type` / `requirement`); flagged for owner review. Warning by default; error under `--strict-metadata`. |
+| `IDX013` | Missing production `verification` block, or a present block has the wrong type, missing/unknown axes, or invalid enum values. Missing block warns by default and errors under `--strict-metadata`; malformed present blocks always error. |
 
 ### Workflow-level (strict-workflows)
 

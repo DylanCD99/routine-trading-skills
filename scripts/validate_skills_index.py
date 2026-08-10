@@ -6,7 +6,7 @@ Strictness levels:
   --strict-workflows   : also resolve workflow references and check internal-consistency
   --strict-metadata    : also enforce timeframe/difficulty/inputs/outputs completeness
 
-Emits stable error codes (IDX001-012, WF001-014). See
+Emits stable error codes (IDX001-013, WF001-014). See
 docs/dev/metadata-and-workflow-schema.md for the full catalog.
 """
 
@@ -67,6 +67,25 @@ VALID_REQUIREMENTS = frozenset(
 
 VALID_TIMEFRAMES = frozenset({"daily", "weekly", "event-driven", "research", "unknown"})
 VALID_DIFFICULTIES = frozenset({"beginner", "intermediate", "advanced", "unknown"})
+
+VERIFICATION_AXES = frozenset(
+    {
+        "instruction_contract",
+        "unit_tests",
+        "workflow_contract",
+        "end_to_end_replay",
+        "data_provenance",
+        "financial_logic_review",
+        "empirical_validation",
+        "security_review",
+    }
+)
+VALID_VERIFICATION_VALUES = frozenset({"passed", "not_verified", "not_applicable"})
+
+
+def _valid_enum(value: object, allowed: frozenset[str]) -> bool:
+    return isinstance(value, str) and value in allowed
+
 
 # ---------------------------------------------------------------------------
 # Frontmatter parser (mirrors scripts/hooks/check_skill_frontmatter.py)
@@ -157,6 +176,7 @@ def _validate_index_structure(
     categories = index.get("categories")
     if (
         not isinstance(categories, list)
+        or not all(isinstance(item, str) for item in categories)
         or set(categories) != VALID_CATEGORIES
         or len(categories) != len(VALID_CATEGORIES)
     ):
@@ -220,12 +240,49 @@ def _validate_index_structure(
             )
 
         category = entry.get("category")
-        if category not in VALID_CATEGORIES:
+        if not _valid_enum(category, VALID_CATEGORIES):
             findings.append(Finding("IDX005", "error", loc, f"invalid category {category!r}"))
 
         status = entry.get("status")
-        if status not in VALID_STATUSES:
+        if not _valid_enum(status, VALID_STATUSES):
             findings.append(Finding("IDX006", "error", loc, f"invalid status {status!r}"))
+
+        verification_present = "verification" in entry
+        if status == "production" and not verification_present:
+            severity = "error" if strict_metadata else "warning"
+            findings.append(
+                Finding(
+                    "IDX013",
+                    severity,
+                    loc,
+                    "production skill is missing required `verification` block",
+                )
+            )
+        elif verification_present:
+            verification = entry.get("verification")
+            verification_error: str | None = None
+            if not isinstance(verification, dict):
+                verification_error = "`verification` must be a mapping"
+            else:
+                keys = set(verification)
+                missing = sorted(VERIFICATION_AXES - keys)
+                unknown = sorted(keys - VERIFICATION_AXES, key=repr)
+                invalid = sorted(
+                    (axis, verification[axis])
+                    for axis in keys & VERIFICATION_AXES
+                    if not isinstance(verification[axis], str)
+                    or verification[axis] not in VALID_VERIFICATION_VALUES
+                )
+                if missing:
+                    verification_error = f"`verification` missing keys: {missing}"
+                elif unknown:
+                    verification_error = f"`verification` has unknown keys: {unknown}"
+                elif invalid:
+                    verification_error = "`verification` has invalid value(s): " + ", ".join(
+                        f"{axis}={value!r}" for axis, value in invalid
+                    )
+            if verification_error:
+                findings.append(Finding("IDX013", "error", loc, verification_error))
 
         if not str(entry.get("summary") or "").strip():
             findings.append(Finding("IDX009", "error", loc, "summary is empty"))
@@ -237,12 +294,12 @@ def _validate_index_structure(
                 findings.append(Finding("IDX-PARSE", "error", iloc, "must be a mapping"))
                 continue
             itype = integ.get("type")
-            if itype is not None and itype not in VALID_INTEGRATION_TYPES:
+            if itype is not None and not _valid_enum(itype, VALID_INTEGRATION_TYPES):
                 findings.append(
                     Finding("IDX007", "error", iloc, f"invalid integration type {itype!r}")
                 )
             ireq = integ.get("requirement")
-            if ireq is not None and ireq not in VALID_REQUIREMENTS:
+            if ireq is not None and not _valid_enum(ireq, VALID_REQUIREMENTS):
                 findings.append(Finding("IDX008", "error", iloc, f"invalid requirement {ireq!r}"))
             # IDX012: explicit `unknown` markers are warnings by default,
             # errors under --strict-metadata. Severity is consistent with the
@@ -260,7 +317,7 @@ def _validate_index_structure(
 
         # Best-effort fields (warn vs error)
         timeframe = entry.get("timeframe", "unknown")
-        if timeframe not in VALID_TIMEFRAMES:
+        if not _valid_enum(timeframe, VALID_TIMEFRAMES):
             sev = "error" if strict_metadata else "warning"
             findings.append(Finding("IDX-META", sev, loc, f"invalid timeframe {timeframe!r}"))
         elif timeframe == "unknown":
@@ -268,7 +325,7 @@ def _validate_index_structure(
             findings.append(Finding("IDX-META", sev, loc, "timeframe is `unknown`"))
 
         difficulty = entry.get("difficulty", "unknown")
-        if difficulty not in VALID_DIFFICULTIES:
+        if not _valid_enum(difficulty, VALID_DIFFICULTIES):
             sev = "error" if strict_metadata else "warning"
             findings.append(Finding("IDX-META", sev, loc, f"invalid difficulty {difficulty!r}"))
         elif difficulty == "unknown":

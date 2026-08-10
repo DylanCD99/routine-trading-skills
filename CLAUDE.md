@@ -167,6 +167,14 @@ When generating or modifying code in this repository, use a TDD-first workflow:
 
 If no test exists for the changed behavior, add one whenever practical.
 
+### Production Verification Metadata
+
+`status: production` is a lifecycle/catalog label, not proof of trading correctness. Production
+skills must also carry the eight-axis `verification` block in `skills-index.yaml`. Use
+[`docs/dev/production-verification.md`](docs/dev/production-verification.md) for the pass/NA
+criteria, audit baseline, live high-severity issue gate, and the rule for resetting stale evidence
+to `not_verified`.
+
 ### Pre-commit Hooks
 
 > **Maintainer operations:** for the full regenerate / drift-gate / scheduled-job runbook (what to run after editing the SSoT, how to clear a failing gate, what the `launchd` agents do), see [`docs/dev/maintenance-runbook.md`](docs/dev/maintenance-runbook.md).
