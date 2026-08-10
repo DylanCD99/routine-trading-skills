@@ -67,7 +67,7 @@ A comprehensive catalog of all 71 Claude Trading Skills organized by category. B
 | **Market Environment Analysis** | Comprehensive global macro briefing covering equity indices, FX, commodities, yields, and sentiment with structured reporting templates | <span class="badge badge-free">No API</span> |
 | **[Market Breadth Analyzer]({{ '/en/skills/market-breadth-analyzer/' | relative_url }})** | Quantifies market breadth health using a data-driven 6-component scoring system (0-100) from publicly available CSV data | <span class="badge badge-free">No API</span> |
 | **Uptrend Analyzer** | Diagnoses breadth health using Uptrend Ratio Dashboard tracking ~2,800 US stocks across 11 sectors. 5-component composite scoring with warning overlays | <span class="badge badge-free">No API</span> |
-| **Macro Regime Detector** | Detects structural macro regime transitions (1-2 year horizon) using 6-component cross-asset ratio analysis (RSP/SPY, yield curve, credit, size factor, sector rotation) | <span class="badge badge-api">FMP Required</span> |
+| **Macro Regime Detector** | Detects structural macro regime transitions (1-2 year horizon) using 6-component cross-asset ratio analysis (RSP/SPY, yield curve, credit, size factor, sector rotation) | <span class="badge badge-free">No API</span> <span class="badge badge-optional">FMP Optional</span> |
 | **[US Market Bubble Detector]({{ '/en/skills/us-market-bubble-detector/' | relative_url }})** | Data-driven bubble risk assessment using Minsky/Kindleberger framework. Two-phase evaluation: quantitative scoring (0-12) + strict qualitative adjustment (0-3). Five risk phases | <span class="badge badge-free">No API</span> |
 | **Market Top Detector** | Detects market top probability using O'Neil Distribution Days, Minervini Leading Stock Deterioration, and Defensive Rotation. 6-component tactical timing system | <span class="badge badge-free">No API</span> |
 | **[IBD Distribution Day Monitor]({{ '/en/skills/ibd-distribution-day-monitor/' | relative_url }})** | Daily IBD Distribution Day detection for QQQ/SPY with 25-session expiration and 5% invalidation. Risk classification (NORMAL/CAUTION/HIGH/SEVERE) and TQQQ/QQQ exposure recommendation | <span class="badge badge-api">FMP Required</span> |
@@ -226,7 +226,7 @@ A comprehensive catalog of all 71 Claude Trading Skills organized by category. B
 | Market Environment Analysis | -- | -- | -- |
 | Market Breadth Analyzer | -- | -- | -- |
 | Uptrend Analyzer | -- | -- | -- |
-| Macro Regime Detector | Required | -- | -- |
+| Macro Regime Detector | Optional | -- | -- |
 | US Market Bubble Detector | -- | -- | -- |
 | Market Top Detector | -- | -- | -- |
 | IBD Distribution Day Monitor | Required | -- | -- |

@@ -14,7 +14,7 @@ permalink: /ja/skills/macro-regime-detector/
 クロスアセット比率分析を用いて、構造的なマクロレジーム転換（1〜2年の期間）を検出します。RSP/SPY集中度、イールドカーブ、信用環境、サイズファクター、株式-債券関係、セクターローテーションを分析し、Concentration、Broadening、Contraction、Inflationary、Transitionalの各状態間のレジームシフトを特定します。マクロレジーム、市場レジーム変化、構造的ローテーション、長期的な市場ポジショニングについて聞かれた際に実行します。
 {: .fs-6 .fw-300 }
 
-<span class="badge badge-api">FMP必須</span>
+<span class="badge badge-free">API不要</span> <span class="badge badge-optional">FMP任意</span>
 
 [スキルパッケージをダウンロード (.skill)](https://github.com/tradermonty/claude-trading-skills/raw/main/skill-packages/macro-regime-detector.skill){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [GitHubでソースを見る](https://github.com/tradermonty/claude-trading-skills/tree/main/skills/macro-regime-detector){: .btn .fs-5 .mb-4 .mb-md-0 }
@@ -46,14 +46,16 @@ permalink: /ja/skills/macro-regime-detector/
 
 ## 3. 前提条件
 
-- **FMP APIキー**（必須）: 環境変数 `FMP_API_KEY` を設定するか `--api-key` を渡す
-- 無料枠（250コール/日）で十分（スクリプトは約10コールを使用）
+- **Python依存関係**（必須）: yfinanceとrequestsを含む `skills/macro-regime-detector/requirements.txt` をインストールする
+- **FMP APIキー**（任意）: yfinance/SHY-TLTフォールバックより先にFMPと国債金利データを利用する場合は `FMP_API_KEY` を設定するか `--api-key` を渡す
+- FMP無料枠で利用できないETFは自動的にyfinanceへフォールバックする
 
 ---
 
 ## 4. クイックスタート
 
 ```bash
+python3 -m pip install -r skills/macro-regime-detector/requirements.txt
 python3 skills/macro-regime-detector/scripts/macro_regime_detector.py
 ```
 
@@ -69,7 +71,9 @@ python3 skills/macro-regime-detector/scripts/macro_regime_detector.py
    ```bash
    python3 skills/macro-regime-detector/scripts/macro_regime_detector.py
    ```
-   9つのETF + 国債金利の600日分のデータを取得します（合計10 APIコール）。
+   9つのETFの600日分のデータを取得します。FMPキーがある場合はFMPと国債金利を先に使用し、利用できないETFはyfinanceへフォールバックします。キーがない場合はyfinance-onlyモードで実行し、イールドカーブにはSHY/TLTフォールバックを使用します。
+
+   6コンポーネントすべてに利用可能なデータがない場合、非0で終了しレポートを書きません。レポート欠落を有効な低トランジション判定として扱わないでください。
 
 3. 生成されたMarkdownレポートを読み、ユーザーに結果を提示。
 
