@@ -27,6 +27,8 @@ future fixture/replay harness can consume.
 | [`trade-memory-loop/sample-run-full-path/`](trade-memory-loop/sample-run-full-path/) | same | per closed trade | **full-path** | + optional backtest-expert at step 3 |
 | [`monthly-performance-review/sample-run/`](monthly-performance-review/sample-run/) | [`monthly-performance-review.yaml`](../../workflows/monthly-performance-review.yaml) | monthly | required-only | trader-memory-core → signal-postmortem → trader-memory-core |
 | [`monthly-performance-review/sample-run-full-path/`](monthly-performance-review/sample-run-full-path/) | same | monthly | **full-path** | + coaching, backtest, skill review, and improvement backlog |
+| [`stockbee-fluency-loop/sample-run/`](stockbee-fluency-loop/sample-run/) | [`stockbee-fluency-loop.yaml`](../../workflows/stockbee-fluency-loop.yaml) | daily | required-only | native offline ingest → update → summarize replay |
+| [`stockbee-fluency-loop/sample-run-full-path/`](stockbee-fluency-loop/sample-run-full-path/) | same | daily | **full-path** | + explicit human-approved lessons contract |
 
 The three samples added for `core-portfolio-weekly`,
 `swing-opportunity-daily`, and `monthly-performance-review` use this strict
@@ -91,3 +93,50 @@ cross-artifact arithmetic. The historical examples are not silently rewritten
 by that contract. All files also remain subject to standard hygiene hooks
 (whitespace, YAML syntax, `detect-secrets`, `no-absolute-paths`, and related
 checks).
+
+## Executable replay pilot (Issue #294 Phase 1)
+
+`stockbee-fluency-loop` is the first example generated and checked by the
+executable replay harness:
+
+```bash
+python3 scripts/workflow_replay.py validate
+python3 scripts/workflow_replay.py check --report workflow-replay-report.json
+```
+
+The replay runs the real `build_model_book.py` CLI with bundled fictional
+screener and OHLCV inputs for steps 1–3. It passes the staged model-book state
+only through declared artifact bundles, requires `--prices-json`, and removes
+API-key, token, secret, password, and proxy variables from the subprocess
+environment. This is an offline-input policy, not an operating-system network
+sandbox.
+
+The full-path step 4 is marked `manual_contract`: it records a supplied human
+decision but does not claim to execute or validate a native trader-memory-core
+journal append API. Both workflow gates are `record_only`, matching their
+review questions rather than inventing automatic pass/fail predicates.
+
+Generated replay manifests record the overall `status`, the exact
+`completed_steps`, and any `required_steps_not_executed`. A `halted` replay
+therefore remains distinguishable from a completed replay whose configured
+variant ended at the same step. `optional_steps_skipped` contains only steps
+intentionally disabled by the required-only variant, not steps bypassed by a
+runtime halt.
+
+Regenerate this pilot's committed outputs only with:
+
+```bash
+python3 scripts/workflow_replay.py generate
+```
+
+`check` always regenerates into a temporary directory before byte-comparing the
+goldens; committed goldens are never executor inputs. The coverage manifest
+freezes the other ten current workflows as Phase 1 deferrals linked to Issue
+#294. A newly added workflow cannot join that frozen deferral set and must ship
+both required-only and full-path replay specs. Issue #294 remains open until
+all eleven workflows and their applicable failure modes are executable.
+
+Replay validation rejects a `golden_dir` that resolves to the replay spec or its
+directory, overlaps any offline-input directory, or overlaps the other
+variant's output tree. Generation fails before publication in those cases, so
+a malformed spec cannot replace its own source or input fixtures.
