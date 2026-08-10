@@ -11,6 +11,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dashboard import Dashboard, apply_gate_updates, get_gates, save_config_atomic  # noqa: E402
 
 
+def test_dashboard_escapes_gate_values_before_html_attribute_interpolation():
+    html = (Path(__file__).resolve().parents[2] / "assets" / "dashboard.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'value="${esc(f.value)}"' in html
+    assert 'value="${f.value}"' not in html
+
+
 def test_get_gates_returns_defaults_when_unset():
     fields = get_gates({})["fields"]
     by_key = {f["key"]: f for f in fields}

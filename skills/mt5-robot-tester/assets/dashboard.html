@@ -157,7 +157,7 @@ function renderGates(fields){
       <label for="gate-${f.key}">${f.label}</label>
       <input id="gate-${f.key}" type="number" data-key="${f.key}"
              step="${f.type==='int' ? '1' : '0.1'}" min="${f.min}" max="${f.max}"
-             value="${f.value}">
+             value="${esc(f.value)}">
       <div class="hint">range ${f.min}–${f.max}</div>
     </div>`).join('');
 }
