@@ -52,11 +52,12 @@ CI maintenance. Once a skill reaches its target, remove its waiver instead of
 resetting the baseline.
 
 The 2026-08-10 baseline uses executable code only. Across the current 69
-executable skills plus root repository scripts, the implementation validation
-measured 35,429 covered statements out of 48,073 (73.698%). The temporary
-repository effective floor is therefore 73%, with a 75% target. Per-skill
-floors use the cross-platform CI baseline when it is lower than the local
-measurement. All current waivers expire on 2026-10-31 and link to Issue #293.
+executable skills plus root repository scripts, Linux CI measured 35,031
+covered statements out of 48,073 (72.870%); local Python 3.9 validation
+measured 35,429 out of 48,073 (73.698%). The temporary repository effective
+floor is therefore the lower cross-platform baseline rounded down to 72%, with
+a 75% target. Per-skill floors follow the same cross-platform rule. All current
+waivers expire on 2026-10-31 and link to Issue #293.
 
 ### Burn-down schedule
 

@@ -576,7 +576,7 @@ def test_current_policy_has_no_allowed_failures_and_enforces_all_tiers():
 
     assert policy.aggregate_target == 75
     assert policy.aggregate_waiver is not None
-    assert policy.aggregate_waiver.floor == 73
+    assert policy.aggregate_waiver.floor == 72
     assert policy.allowed_failures == {}
     assert entries["theme-detector"].allowed_failure is False
     assert entries["futures-position-sizer"].coverage_target == 85

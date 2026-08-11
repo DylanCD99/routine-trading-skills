@@ -5,11 +5,11 @@ schema_version: 1
 aggregate_coverage:
   target: 75
   waiver:
-    floor: 73
+    floor: 72
     target: 75
     expires_on: "2026-10-31"
     issue: 293
-    reason: Current executable-code repository coverage is below the 75% target.
+    reason: Cross-platform executable-code coverage is below the 75% target.
 
 coverage:
   default_target: 70
