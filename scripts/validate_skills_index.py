@@ -6,7 +6,7 @@ Strictness levels:
   --strict-workflows   : also resolve workflow references and check internal-consistency
   --strict-metadata    : also enforce timeframe/difficulty/inputs/outputs completeness
 
-Emits stable error codes (IDX001-013, WF001-014). See
+Emits stable error codes (IDX001-014, WF001-014). See
 docs/dev/metadata-and-workflow-schema.md for the full catalog.
 """
 
@@ -246,6 +246,40 @@ def _validate_index_structure(
         status = entry.get("status")
         if not _valid_enum(status, VALID_STATUSES):
             findings.append(Finding("IDX006", "error", loc, f"invalid status {status!r}"))
+
+        if "knowledge_only" in entry:
+            knowledge_only = entry.get("knowledge_only")
+            if not isinstance(knowledge_only, bool):
+                findings.append(
+                    Finding("IDX014", "error", loc, "`knowledge_only` must be a boolean")
+                )
+            elif knowledge_only:
+                scripts_dir = project_root / "skills" / skill_id / "scripts"
+                executable_scripts = [
+                    path
+                    for path in scripts_dir.rglob("*.py")
+                    if path.is_file()
+                    and path.name != "__init__.py"
+                    and "tests" not in path.relative_to(scripts_dir).parts
+                ]
+                if status != "production":
+                    findings.append(
+                        Finding(
+                            "IDX014",
+                            "error",
+                            loc,
+                            "`knowledge_only: true` is only valid for production skills",
+                        )
+                    )
+                if executable_scripts:
+                    findings.append(
+                        Finding(
+                            "IDX014",
+                            "error",
+                            loc,
+                            "`knowledge_only: true` conflicts with executable Python scripts",
+                        )
+                    )
 
         verification_present = "verification" in entry
         if status == "production" and not verification_present:

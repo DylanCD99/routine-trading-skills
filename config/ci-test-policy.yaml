@@ -1,0 +1,205 @@
+schema_version: 1
+
+# Coverage is measured on executable code only. Test modules under */tests/*
+# are excluded from both per-skill and repository aggregates.
+aggregate_coverage:
+  target: 75
+  waiver:
+    floor: 73
+    target: 75
+    expires_on: "2026-10-31"
+    issue: 293
+    reason: Current executable-code repository coverage is below the 75% target.
+
+coverage:
+  default_target: 70
+  tiers:
+    core-risk-math-state:
+      target: 85
+      skills:
+      - drawdown-circuit-breaker
+      - futures-position-sizer
+      - position-sizer
+      - trader-memory-core
+  waivers:
+    breadth-chart-analyst:
+      floor: 25
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    canslim-screener:
+      floor: 48
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    dividend-growth-pullback-screener:
+      floor: 39
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    downtrend-duration-analyzer:
+      floor: 46
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    earnings-calendar:
+      floor: 48
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    earnings-trade-analyzer:
+      floor: 67
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    economic-calendar-fetcher:
+      floor: 69
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    edge-candidate-agent:
+      floor: 40
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    edge-strategy-designer:
+      floor: 47
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    ftd-detector:
+      floor: 65
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    ibd-distribution-day-monitor:
+      floor: 38
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    institutional-flow-tracker:
+      floor: 65
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    market-breadth-analyzer:
+      floor: 69
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    pair-trade-screener:
+      floor: 56
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    pead-screener:
+      floor: 69
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    position-sizer:
+      floor: 71
+      target: 85
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet core financial-math coverage toward the 85% target.
+    signal-postmortem:
+      floor: 40
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    skill-designer:
+      floor: 47
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    skill-idea-miner:
+      floor: 60
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    stockbee-20pct-study:
+      floor: 69
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    stockbee-episodic-pivot-analyzer:
+      floor: 59
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    stockbee-exhaustion-hammer-screener:
+      floor: 59
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    stockbee-momentum-burst-screener:
+      floor: 57
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    stockbee-setup-fluency-trainer:
+      floor: 53
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    strategy-pivot-designer:
+      floor: 63
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    us-market-bubble-detector:
+      floor: 43
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+    value-dividend-screener:
+      floor: 34
+      target: 70
+      expires_on: "2026-10-31"
+      issue: 293
+      reason: Ratchet from the 2026-08-10 executable-code baseline.
+
+# Runtime exceptions are data, not code. Every entry must carry a future
+# expiry, linked issue, and reason. There are currently no allowed failures.
+allowed_failures: {}
+
+matrix:
+  canslim-screener:
+    test_paths:
+    - skills/canslim-screener/scripts/tests/test_fmp_fallback.py
+    - skills/canslim-screener/scripts/tests/test_fmp_stable_migration.py
+    - skills/canslim-screener/scripts/tests/test_institutional_fallback.py
+    requirements:
+    - beautifulsoup4
+    - lxml
+    reason: Preserve the focused FMP contract suite and optional dependencies.
+  pair-trade-screener:
+    requirements:
+    - statsmodels>=0.14,<0.15
+    reason: Install the statistical runtime only for this dedicated CI row.

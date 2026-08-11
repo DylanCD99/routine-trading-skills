@@ -1180,6 +1180,42 @@ def test_consume_optional_artifact_passes(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_knowledge_only_marker_is_strictly_validated(tmp_path: Path) -> None:
+    write_skill(tmp_path, "alpha")
+
+    write_index(tmp_path, [minimal_skill("alpha", knowledge_only="yes")])
+    findings = validate(tmp_path)
+    assert any(f.code == "IDX014" and "boolean" in f.message for f in findings)
+
+    write_index(
+        tmp_path,
+        [minimal_skill("alpha", status="beta", verification=None, knowledge_only=True)],
+    )
+    findings = validate(tmp_path)
+    assert any(f.code == "IDX014" and "production" in f.message for f in findings)
+
+
+def test_knowledge_only_conflicts_with_executable_python(tmp_path: Path) -> None:
+    write_skill(tmp_path, "alpha")
+    script = tmp_path / "skills/alpha/scripts/pkg/run.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("def main():\n    return 0\n", encoding="utf-8")
+    write_index(tmp_path, [minimal_skill("alpha", knowledge_only=True)])
+
+    findings = validate(tmp_path)
+
+    assert any(f.code == "IDX014" and "executable" in f.message for f in findings)
+
+
+def test_script_free_production_accepts_knowledge_only_marker(tmp_path: Path) -> None:
+    write_skill(tmp_path, "alpha")
+    write_index(tmp_path, [minimal_skill("alpha", knowledge_only=True)])
+
+    findings = validate(tmp_path)
+
+    assert not any(f.code == "IDX014" for f in findings)
+
+
 def test_production_missing_verification_warns_by_default(tmp_path: Path) -> None:
     write_skill(tmp_path, "alpha")
     skill = minimal_skill("alpha")

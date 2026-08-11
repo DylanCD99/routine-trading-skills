@@ -42,6 +42,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.9"
+      - name: Install policy dependency
+        run: pip install "packaging>=24.0" "pyyaml>=6.0"
       - name: Discover and validate test coverage
         id: discover
         run: echo "matrix=$(python3 scripts/ci_test_matrix.py matrix)" >> "$GITHUB_OUTPUT"
@@ -74,7 +76,7 @@ jobs:
         with:
           name: coverage-${{ matrix.id }}
           path: coverage-data/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 1
 
   coverage:
@@ -100,6 +102,14 @@ jobs:
           python scripts/ci_test_matrix.py aggregate
           --artifacts coverage-artifacts
           --output combined-coverage
+      - name: Upload executable-code coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: executable-code-coverage-report
+          path: combined-coverage/
+          if-no-files-found: error
+          retention-days: 14
 
   metadata:
     name: Metadata + Workflow checks
