@@ -1,13 +1,18 @@
 schema_version: 1
 
 covered:
+  stockbee-20pct-study-daily:
+    spec: stockbee-20pct-study-daily/replay.yaml
+    variants:
+      - required-only
+      - full-path
   stockbee-fluency-loop:
     spec: stockbee-fluency-loop/replay.yaml
     variants:
       - required-only
       - full-path
 
-# Frozen Phase 1 baseline. The validator rejects adding another deferral, so a
+# Frozen Phase 2 baseline. The validator rejects adding another deferral, so a
 # newly introduced workflow must ship both replay variants.
 deferred:
   core-portfolio-weekly:
@@ -28,9 +33,6 @@ deferred:
   shapiro-contrarian:
     issue: 294
     reason: Five decision gates need explicit deterministic evaluators.
-  stockbee-20pct-study-daily:
-    issue: 294
-    reason: Offline study and accepted-lessons adapters remain deferred.
   stockbee-ep-daily:
     issue: 294
     reason: Circuit-breaker and EP handoff failure fixtures remain deferred.

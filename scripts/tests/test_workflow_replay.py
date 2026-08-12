@@ -1,4 +1,4 @@
-"""Executable contract replay tests for Issue #294 Phase 1."""
+"""Executable contract replay tests for Issue #294."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import workflow_replay as replay_module  # noqa: E402
 from workflow_replay import (  # noqa: E402
     EXECUTORS,
-    PHASE1_DEFERRED_WORKFLOWS,
+    FROZEN_DEFERRED_WORKFLOWS,
     ReplayError,
     check_goldens,
     compare_trees,
@@ -33,12 +33,16 @@ COVERAGE = ROOT / "examples" / "workflows" / "replay-coverage.yaml"
 SPEC = ROOT / "examples" / "workflows" / "stockbee-fluency-loop" / "replay.yaml"
 
 
-def test_coverage_is_complete_and_phase1_deferrals_are_frozen() -> None:
+def test_coverage_is_complete_and_phase2_deferrals_are_frozen() -> None:
     summary = validate_coverage(ROOT, COVERAGE)
 
-    assert summary["covered"] == ["stockbee-fluency-loop"]
-    assert set(summary["deferred"]) == PHASE1_DEFERRED_WORKFLOWS
-    assert summary["variants"] == {"stockbee-fluency-loop": ["required-only", "full-path"]}
+    assert summary["covered"] == ["stockbee-20pct-study-daily", "stockbee-fluency-loop"]
+    assert set(summary["deferred"]) == FROZEN_DEFERRED_WORKFLOWS
+    assert len(summary["deferred"]) == 9
+    assert summary["variants"] == {
+        "stockbee-20pct-study-daily": ["required-only", "full-path"],
+        "stockbee-fluency-loop": ["required-only", "full-path"],
+    }
 
 
 def test_new_workflow_cannot_be_silently_deferred() -> None:
@@ -50,10 +54,10 @@ def test_new_workflow_cannot_be_silently_deferred() -> None:
 
     coverage["deferred"]["new-workflow"] = {
         "issue": 294,
-        "reason": "Do not allow new Phase 1 deferrals.",
+        "reason": "Do not allow new Phase 2 deferrals.",
     }
     errors = coverage_errors(workflow_ids, coverage)
-    assert any("frozen Phase 1 deferred set" in error for error in errors)
+    assert any("frozen Phase 2 deferred set" in error for error in errors)
 
 
 def test_pilot_spec_matches_workflow_and_requires_offline_prices() -> None:
@@ -160,6 +164,9 @@ def test_generate_rejects_source_destination_without_deleting_existing_files(
 
     coverage = load_yaml(COVERAGE)
     coverage["covered"]["stockbee-fluency-loop"]["spec"] = "replay.yaml"
+    coverage["covered"]["stockbee-20pct-study-daily"]["spec"] = str(
+        ROOT / "examples/workflows/stockbee-20pct-study-daily/replay.yaml"
+    )
     coverage_path = tmp_path / "replay-coverage.yaml"
     coverage_path.write_text(yaml.safe_dump(coverage, sort_keys=False), encoding="utf-8")
     before[coverage_path.relative_to(tmp_path)] = coverage_path.read_bytes()
@@ -309,7 +316,9 @@ def test_manual_step_validates_consumed_artifact_content(
 def test_manual_approval_rejects_changed_evidence_hashes(tmp_path: Path) -> None:
     approval = load_yaml(SPEC.parent / "replay-inputs" / "accepted_lessons.yaml")
     approval["source_sha256"]["rule_candidates"] = "0" * 64
-    approval_path = tmp_path / "stale-approval.yaml"
+    input_dir = tmp_path / "inputs"
+    input_dir.mkdir()
+    approval_path = input_dir / "stale-approval.yaml"
     approval_path.write_text(yaml.safe_dump(approval, sort_keys=False), encoding="utf-8")
 
     with pytest.raises(ReplayError, match="source_sha256") as exc_info:
@@ -332,7 +341,9 @@ def test_manual_approval_rejects_changed_evidence_hashes(tmp_path: Path) -> None
 def test_manual_lesson_records_must_match_schema(lessons, tmp_path: Path) -> None:
     approval = load_yaml(SPEC.parent / "replay-inputs" / "accepted_lessons.yaml")
     approval["lessons"] = lessons
-    approval_path = tmp_path / "invalid-lessons.yaml"
+    input_dir = tmp_path / "inputs"
+    input_dir.mkdir()
+    approval_path = input_dir / "invalid-lessons.yaml"
     approval_path.write_text(yaml.safe_dump(approval, sort_keys=False), encoding="utf-8")
 
     with pytest.raises(ReplayError, match="manual lessons input schema"):
@@ -346,7 +357,9 @@ def test_manual_lesson_records_must_match_schema(lessons, tmp_path: Path) -> Non
 
 
 def test_invalid_json_fails_without_publishing(tmp_path: Path) -> None:
-    invalid = tmp_path / "invalid-prices.json"
+    input_dir = tmp_path / "inputs"
+    input_dir.mkdir()
+    invalid = input_dir / "invalid-prices.json"
     invalid.write_text("{not json\n", encoding="utf-8")
     output = tmp_path / "published"
     output.mkdir()
@@ -419,7 +432,9 @@ def test_executor_missing_declared_file_fails_before_step_completion(
 
 
 def test_empty_prices_is_explicit_degraded_behavior_without_network(tmp_path: Path) -> None:
-    empty_prices = tmp_path / "prices.json"
+    input_dir = tmp_path / "inputs"
+    input_dir.mkdir()
+    empty_prices = input_dir / "prices.json"
     empty_prices.write_text('{"prices": {}}\n', encoding="utf-8")
     output = tmp_path / "degraded"
 
@@ -439,7 +454,9 @@ def test_empty_prices_is_explicit_degraded_behavior_without_network(tmp_path: Pa
     assert summary["pending_records"] == 6
 
 
-def test_injected_journal_failure_rolls_back_every_published_file(tmp_path: Path) -> None:
+def test_injected_manual_contract_failure_rolls_back_every_published_file(
+    tmp_path: Path,
+) -> None:
     output = tmp_path / "published"
     output.mkdir()
     before = output / "existing-journal.yaml"
@@ -447,9 +464,9 @@ def test_injected_journal_failure_rolls_back_every_published_file(tmp_path: Path
 
     def fail_before_step(step: int, _artifacts: dict[str, dict]) -> None:
         if step == 4:
-            raise OSError("injected journal failure")
+            raise OSError("injected manual contract failure")
 
-    with pytest.raises(ReplayError, match="journal failure") as exc_info:
+    with pytest.raises(ReplayError, match="manual contract failure") as exc_info:
         execute_replay(
             ROOT,
             SPEC,

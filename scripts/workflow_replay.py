@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Deterministic workflow contract replay harness (Issue #294 Phase 1).
+"""Deterministic workflow contract replay harness (Issue #294 Phase 2).
 
-The pilot executes the real offline Stockbee fluency CLI for steps 1-3. The
-optional human journal step is deliberately reported as ``manual_contract``;
-it does not claim to execute trader-memory-core. Golden outputs are comparison
-targets only and are never used as replay inputs.
+The harness executes real offline CLIs for the Stockbee fluency and 20% study
+workflows. Optional human journal steps are deliberately reported as
+``manual_contract``; they do not claim to execute trader-memory-core. Golden
+outputs are comparison targets only and are never used as replay inputs.
 """
 
 from __future__ import annotations
@@ -31,11 +31,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_COVERAGE = REPO_ROOT / "examples" / "workflows" / "replay-coverage.yaml"
 SPEC_SCHEMA = REPO_ROOT / "examples" / "workflows" / "replay-spec.schema.json"
 MANUAL_LESSONS_SCHEMA = REPO_ROOT / "examples" / "workflows" / "manual-lessons.schema.json"
+TWENTY_PCT_LESSONS_SCHEMA = REPO_ROOT / "examples" / "workflows" / "twenty-pct-lessons.schema.json"
 VARIANTS = ("required-only", "full-path")
 
-# Phase 1 deliberately covers one workflow. This frozen baseline prevents a
-# newly introduced workflow from being waved through as another deferral.
-PHASE1_DEFERRED_WORKFLOWS = frozenset(
+# Phase 2 covers two workflows. This frozen baseline prevents a newly
+# introduced workflow from being waved through as another deferral.
+FROZEN_DEFERRED_WORKFLOWS = frozenset(
     {
         "core-portfolio-weekly",
         "kanchi-dividend-weekly",
@@ -43,7 +44,6 @@ PHASE1_DEFERRED_WORKFLOWS = frozenset(
         "monthly-performance-review",
         "multi-asset-opportunity-daily",
         "shapiro-contrarian",
-        "stockbee-20pct-study-daily",
         "stockbee-ep-daily",
         "swing-opportunity-daily",
         "trade-memory-loop",
@@ -52,6 +52,14 @@ PHASE1_DEFERRED_WORKFLOWS = frozenset(
 
 TIMESTAMP_FIELDS = frozenset({"generated_at", "created_at", "updated_at", "last_outcome_update_at"})
 SENSITIVE_ENV_MARKERS = ("API_KEY", "TOKEN", "SECRET", "PASSWORD", "PROXY")
+DIGEST_ALLOWLIST_KEYS = frozenset(
+    {
+        "setup_fluency_summary",
+        "rule_candidates",
+        "twenty_pct_cohort_summary",
+        "edge_hints_yaml",
+    }
+)
 RFC3339_PATTERN = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
 )
@@ -93,8 +101,9 @@ def _load_json(path: Path, label: str) -> Any:
 def _dump_yaml_with_digest_allowlist(payload: Any) -> str:
     """Serialize fixture evidence while marking deterministic hashes as non-secrets."""
     rendered = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+    keys = "|".join(sorted(re.escape(key) for key in DIGEST_ALLOWLIST_KEYS))
     digest_line = re.compile(
-        r"^(\s+(?:setup_fluency_summary|rule_candidates): [0-9a-f]{64})$",
+        rf"^(\s+(?:{keys}): [0-9a-f]{{64}})$",
         re.MULTILINE,
     )
     return digest_line.sub(r"\1  # pragma: allowlist secret", rendered)
@@ -131,6 +140,20 @@ def _validate_manual_contract(payload: Any, definition: str) -> None:
         raise ReplayError(f"invalid manual lessons {definition} schema:\n- " + "\n- ".join(errors))
 
 
+def _validate_twenty_pct_manual_contract(payload: Any, definition: str) -> None:
+    schema = _load_json(TWENTY_PCT_LESSONS_SCHEMA, "twenty-percent lessons schema")
+    selected = {
+        "$schema": schema["$schema"],
+        "$defs": schema["$defs"],
+        "$ref": f"#/$defs/{definition}",
+    }
+    errors = _schema_error_details(selected, payload)
+    if errors:
+        raise ReplayError(
+            f"invalid twenty-percent lessons {definition} schema:\n- " + "\n- ".join(errors)
+        )
+
+
 def coverage_errors(workflow_ids: set[str], coverage: Mapping[str, Any]) -> list[str]:
     errors: list[str] = []
     covered = coverage.get("covered") or {}
@@ -154,10 +177,10 @@ def coverage_errors(workflow_ids: set[str], coverage: Mapping[str, Any]) -> list
     if unknown:
         errors.append(f"coverage references unknown workflows: {sorted(unknown)}")
 
-    if set(deferred) != PHASE1_DEFERRED_WORKFLOWS:
+    if set(deferred) != FROZEN_DEFERRED_WORKFLOWS:
         errors.append(
-            "deferred workflows must match the frozen Phase 1 deferred set; "
-            f"expected {sorted(PHASE1_DEFERRED_WORKFLOWS)}, got {sorted(deferred)}"
+            "deferred workflows must match the frozen Phase 2 deferred set; "
+            f"expected {sorted(FROZEN_DEFERRED_WORKFLOWS)}, got {sorted(deferred)}"
         )
     for workflow_id, entry in deferred.items():
         if not isinstance(entry, dict):
@@ -256,6 +279,35 @@ def _validate_golden_dirs(
         )
 
 
+def _validate_runtime_output(
+    repo_root: Path,
+    spec_path: Path,
+    spec: Mapping[str, Any],
+    inputs: Mapping[str, Path],
+    output_dir: Path,
+) -> None:
+    """Reject runtime destinations that could replace replay source data."""
+    output = output_dir.resolve()
+    if output.exists() and not output.is_dir():
+        raise ReplayError(f"output_dir must be a directory: {output}")
+    protected: dict[str, Path] = {
+        "repository root": repo_root.resolve(),
+        "replay spec": spec_path.resolve(),
+        "replay spec directory": spec_path.resolve().parent,
+    }
+    for name, path in inputs.items():
+        protected[f"inputs.{name} parent"] = path.resolve().parent
+    for variant in VARIANTS:
+        protected[f"variants.{variant}.golden_dir"] = _safe_relative(
+            spec_path.resolve().parent,
+            spec["variants"][variant]["golden_dir"],
+            f"variants.{variant}.golden_dir",
+        )
+    for label, path in protected.items():
+        if _paths_overlap(output, path):
+            raise ReplayError(f"output_dir overlaps protected {label}: {path}")
+
+
 def validate_spec(repo_root: Path, spec_path: Path) -> dict[str, Any]:
     spec = load_yaml(spec_path)
     schema = _load_json(SPEC_SCHEMA, "replay-spec schema")
@@ -327,15 +379,30 @@ def validate_spec(repo_root: Path, spec_path: Path) -> dict[str, Any]:
                     )
                 output_path_owners[output_path] = owner
 
-    if spec_steps[2]["executor"] == "stockbee_fluency_update" and "prices" not in spec["inputs"]:
-        raise ReplayError("stockbee_fluency_update requires an offline prices input")
-
     input_paths: dict[str, Path] = {}
     for name, value in spec["inputs"].items():
         input_path = _safe_relative(spec_path.parent, value, f"inputs.{name}")
         if not input_path.is_file():
             raise ReplayError(f"inputs.{name} does not exist: {input_path}")
         input_paths[name] = input_path
+
+    executor_required_inputs = {
+        "stockbee_fluency_ingest": {"screener"},
+        "stockbee_fluency_update": {"prices"},
+        "manual_lessons_log": {"accepted_lessons"},
+        "twenty_pct_scan": {"prices"},
+        "twenty_pct_enrich": {"news"},
+        "twenty_pct_update_outcomes": {"prices"},
+        "manual_twenty_pct_lessons": {"accepted_lessons"},
+    }
+    for number, replay_step in spec_steps.items():
+        required_inputs = executor_required_inputs.get(replay_step["executor"], set())
+        missing_inputs = required_inputs - set(input_paths)
+        if missing_inputs:
+            raise ReplayError(
+                f"step {number} executor {replay_step['executor']!r} requires offline "
+                f"inputs {sorted(missing_inputs)}"
+            )
 
     expected_required = [
         number for number, step in workflow_steps.items() if not bool(step.get("optional"))
@@ -714,20 +781,317 @@ def _manual_lessons(
     return artifacts
 
 
+def _twenty_pct_script(repo_root: Path) -> Path:
+    return repo_root / "skills" / "stockbee-20pct-study" / "scripts" / "run_20pct_study.py"
+
+
+def _stage_state_handoff(
+    source: Path,
+    destination: Path,
+    fixed_timestamp: str,
+) -> None:
+    _normalize_jsonl_file(source, destination, fixed_timestamp, {})
+
+
+def _twenty_pct_scan(
+    repo_root: Path,
+    spec: Mapping[str, Any],
+    step: Mapping[str, Any],
+    inputs: Mapping[str, Path],
+    _consumed: Mapping[str, dict[str, Any]],
+    work: Path,
+    stage: Path,
+) -> dict[str, dict[str, Any]]:
+    _load_json(inputs["prices"], "twenty-percent prices")
+    state = work / "events.jsonl"
+    reports = work / "reports"
+    reports.mkdir(parents=True)
+    _run_cli(
+        [
+            sys.executable,
+            str(_twenty_pct_script(repo_root)),
+            "scan",
+            "--prices-json",
+            str(inputs["prices"]),
+            "--as-of",
+            spec["fixed_timestamp"][:10],
+            "--lookback-days",
+            "5",
+            "--min-price",
+            "1",
+            "--min-dollar-volume",
+            "0",
+            "--include-down-movers",
+            "--state-file",
+            str(state),
+            "--output-dir",
+            str(reports),
+        ],
+        repo_root,
+    )
+    artifacts = _artifact_paths(stage, step["output_files"])
+    replacements = {
+        str(inputs["prices"]): "$INPUT/prices.json",
+        str(state): "$STATE/events.jsonl",
+        str(reports): "$WORK/reports",
+    }
+    _normalize_json_file(
+        _latest_report(reports, "stockbee_20pct_events_*.json"),
+        Path(artifacts["twenty_pct_mover_events"]["files"]["canonical"]),
+        spec["fixed_timestamp"],
+        replacements,
+    )
+    _normalize_jsonl_file(
+        state,
+        Path(artifacts["twenty_pct_mover_events"]["files"]["state"]),
+        spec["fixed_timestamp"],
+        replacements,
+    )
+    return artifacts
+
+
+def _twenty_pct_enrich(
+    repo_root: Path,
+    spec: Mapping[str, Any],
+    step: Mapping[str, Any],
+    inputs: Mapping[str, Path],
+    consumed: Mapping[str, dict[str, Any]],
+    work: Path,
+    stage: Path,
+) -> dict[str, dict[str, Any]]:
+    _load_json(inputs["news"], "twenty-percent news")
+    source = consumed["twenty_pct_mover_events"]
+    events = Path(source["files"]["canonical"])
+    _load_json(events, "twenty-percent mover events handoff")
+    state = work / "events.jsonl"
+    _stage_state_handoff(Path(source["files"]["state"]), state, spec["fixed_timestamp"])
+    reports = work / "reports"
+    reports.mkdir(parents=True)
+    _run_cli(
+        [
+            sys.executable,
+            str(_twenty_pct_script(repo_root)),
+            "enrich",
+            "--events-json",
+            str(events),
+            "--news-json",
+            str(inputs["news"]),
+            "--state-file",
+            str(state),
+            "--output-dir",
+            str(reports),
+        ],
+        repo_root,
+    )
+    artifacts = _artifact_paths(stage, step["output_files"])
+    replacements = {
+        str(events): "$ARTIFACT/twenty_pct_mover_events.json",
+        str(inputs["news"]): "$INPUT/news.json",
+        str(state): "$STATE/events.jsonl",
+        str(reports): "$WORK/reports",
+    }
+    _normalize_json_file(
+        _latest_report(reports, "stockbee_20pct_enriched_*.json"),
+        Path(artifacts["classified_event_study"]["files"]["canonical"]),
+        spec["fixed_timestamp"],
+        replacements,
+    )
+    _normalize_jsonl_file(
+        state,
+        Path(artifacts["classified_event_study"]["files"]["state"]),
+        spec["fixed_timestamp"],
+        replacements,
+    )
+    return artifacts
+
+
+def _twenty_pct_update_outcomes(
+    repo_root: Path,
+    spec: Mapping[str, Any],
+    step: Mapping[str, Any],
+    inputs: Mapping[str, Path],
+    consumed: Mapping[str, dict[str, Any]],
+    work: Path,
+    stage: Path,
+) -> dict[str, dict[str, Any]]:
+    _load_json(inputs["prices"], "twenty-percent prices")
+    source = consumed["classified_event_study"]
+    state = work / "events.jsonl"
+    _stage_state_handoff(Path(source["files"]["state"]), state, spec["fixed_timestamp"])
+    reports = work / "reports"
+    reports.mkdir(parents=True)
+    _run_cli(
+        [
+            sys.executable,
+            str(_twenty_pct_script(repo_root)),
+            "update-outcomes",
+            "--prices-json",
+            str(inputs["prices"]),
+            "--horizons",
+            "5",
+            "--state-file",
+            str(state),
+            "--output-dir",
+            str(reports),
+        ],
+        repo_root,
+    )
+    artifacts = _artifact_paths(stage, step["output_files"])
+    replacements = {
+        str(inputs["prices"]): "$INPUT/prices.json",
+        str(state): "$STATE/events.jsonl",
+        str(reports): "$WORK/reports",
+    }
+    _normalize_json_file(
+        _latest_report(reports, "stockbee_20pct_outcome_update_*.json"),
+        Path(artifacts["matured_event_outcomes"]["files"]["canonical"]),
+        spec["fixed_timestamp"],
+        replacements,
+    )
+    _normalize_jsonl_file(
+        state,
+        Path(artifacts["matured_event_outcomes"]["files"]["state"]),
+        spec["fixed_timestamp"],
+        replacements,
+    )
+    return artifacts
+
+
+def _twenty_pct_summarize(
+    repo_root: Path,
+    spec: Mapping[str, Any],
+    step: Mapping[str, Any],
+    _inputs: Mapping[str, Path],
+    consumed: Mapping[str, dict[str, Any]],
+    work: Path,
+    stage: Path,
+) -> dict[str, dict[str, Any]]:
+    source = consumed["matured_event_outcomes"]
+    state = work / "events.jsonl"
+    _stage_state_handoff(Path(source["files"]["state"]), state, spec["fixed_timestamp"])
+    reports = work / "reports"
+    reports.mkdir(parents=True)
+    _run_cli(
+        [
+            sys.executable,
+            str(_twenty_pct_script(repo_root)),
+            "summarize",
+            "--state-file",
+            str(state),
+            "--group-by",
+            "direction,catalyst.label,technical_context.pattern_label,technical_context.close_quality",
+            "--min-sample",
+            "1",
+            "--horizon",
+            "5",
+            "--output-dir",
+            str(reports),
+        ],
+        repo_root,
+    )
+    summary_source = _latest_report(reports, "stockbee_20pct_cohort_summary_*.json")
+    hints_source = _latest_report(reports, "stockbee_20pct_edge_hints_*.yaml")
+    summary = _canonicalize(
+        _load_json(summary_source, "twenty-percent cohort summary"),
+        spec["fixed_timestamp"],
+        {str(state): "$STATE/events.jsonl", str(reports): "$WORK/reports"},
+    )
+    hints = _canonicalize(
+        _load_json(hints_source, "twenty-percent edge hints"),
+        spec["fixed_timestamp"],
+        {str(state): "$STATE/events.jsonl", str(reports): "$WORK/reports"},
+    )
+    if hints.get("edge_hints") != summary.get("rule_candidates"):
+        raise ReplayError("edge_hints handoff does not match cohort summary rule_candidates")
+    artifacts = _artifact_paths(stage, step["output_files"])
+    _write_json(Path(artifacts["twenty_pct_cohort_summary"]["files"]["canonical"]), summary)
+    _write_json(Path(artifacts["edge_hints_yaml"]["files"]["canonical"]), hints)
+    return artifacts
+
+
+def _manual_twenty_pct_lessons(
+    _repo_root: Path,
+    spec: Mapping[str, Any],
+    step: Mapping[str, Any],
+    inputs: Mapping[str, Path],
+    consumed: Mapping[str, dict[str, Any]],
+    _work: Path,
+    stage: Path,
+) -> dict[str, dict[str, Any]]:
+    source = load_yaml(inputs["accepted_lessons"])
+    _validate_twenty_pct_manual_contract(source, "input")
+    expected_sources = ["twenty_pct_cohort_summary", "edge_hints_yaml"]
+    if source.get("human_approved") is not True:
+        raise ReplayError("twenty-percent lessons manual contract requires human_approved: true")
+    if source.get("source_artifacts") != expected_sources:
+        raise ReplayError(
+            f"twenty-percent source_artifacts must be {expected_sources}, "
+            f"got {source.get('source_artifacts')!r}"
+        )
+    if set(consumed) != set(expected_sources):
+        raise ReplayError("twenty-percent lessons did not receive both declared artifacts")
+    summary_path = Path(consumed["twenty_pct_cohort_summary"]["files"]["canonical"])
+    hints_path = Path(consumed["edge_hints_yaml"]["files"]["canonical"])
+    summary = _load_json(summary_path, "twenty_pct_cohort_summary handoff")
+    hints = load_yaml(hints_path)
+    if hints.get("edge_hints") != summary.get("rule_candidates"):
+        raise ReplayError("edge_hints handoff does not match cohort summary evidence")
+    source_sha256 = {
+        "twenty_pct_cohort_summary": hashlib.sha256(summary_path.read_bytes()).hexdigest(),
+        "edge_hints_yaml": hashlib.sha256(hints_path.read_bytes()).hexdigest(),
+    }
+    if source["source_sha256"] != source_sha256:
+        raise ReplayError(
+            "twenty-percent lessons source_sha256 does not match replayed step-4 evidence"
+        )
+    payload = {
+        "schema_version": 1,
+        "workflow_id": spec["workflow_id"],
+        "recorded_at": spec["fixed_timestamp"],
+        "source_artifacts": expected_sources,
+        "lessons": source.get("lessons") or [],
+        "provenance": {
+            "execution_mode": "manual_contract",
+            "native_trader_memory_validated": False,
+            "source_sha256": source_sha256,
+            "note": "Human-approved fixture staged by replay harness; no trader-memory-core append API was executed.",
+        },
+    }
+    _validate_twenty_pct_manual_contract(payload, "output")
+    artifacts = _artifact_paths(stage, step["output_files"])
+    output = Path(artifacts["accepted_lessons_log"]["files"]["canonical"])
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(_dump_yaml_with_digest_allowlist(payload), encoding="utf-8")
+    return artifacts
+
+
 EXECUTORS: dict[str, ExecutorRegistration] = {
     "stockbee_fluency_ingest": ExecutorRegistration("native_cli", _stockbee_ingest),
     "stockbee_fluency_update": ExecutorRegistration("native_cli", _stockbee_update),
     "stockbee_fluency_summarize": ExecutorRegistration("native_cli", _stockbee_summarize),
     "manual_lessons_log": ExecutorRegistration("manual_contract", _manual_lessons),
+    "twenty_pct_scan": ExecutorRegistration("native_cli", _twenty_pct_scan),
+    "twenty_pct_enrich": ExecutorRegistration("native_cli", _twenty_pct_enrich),
+    "twenty_pct_update_outcomes": ExecutorRegistration("native_cli", _twenty_pct_update_outcomes),
+    "twenty_pct_summarize": ExecutorRegistration("native_cli", _twenty_pct_summarize),
+    "manual_twenty_pct_lessons": ExecutorRegistration(
+        "manual_contract", _manual_twenty_pct_lessons
+    ),
 }
 
 
 def _prompt_text(workflow: Mapping[str, Any], variant: str) -> str:
-    optional_text = (
-        "Skip every optional step."
-        if variant == "required-only"
-        else "Run the optional human-approved lessons step after reviewing the cohort evidence."
-    )
+    if variant == "required-only":
+        optional_text = "Skip every optional step."
+    elif workflow["id"] == "stockbee-20pct-study-daily":
+        optional_text = (
+            "Run the optional human-approved lessons step after reviewing the 20% mover "
+            "cohort evidence."
+        )
+    else:
+        optional_text = (
+            "Run the optional human-approved lessons step after reviewing the cohort evidence."
+        )
     return (
         f"# Prompt: {variant} {workflow['id']} replay\n\n"
         "Replay this workflow with the bundled fictional input data. "
@@ -844,6 +1208,80 @@ def _publish_tree(stage: Path, destination: Path) -> None:
             shutil.rmtree(backup_root)
 
 
+def _publish_trees_transactionally(staged_trees: list[tuple[Path, Path]]) -> None:
+    """Publish multiple generated trees as one rollback-capable transaction."""
+    destinations = [destination.resolve() for _stage, destination in staged_trees]
+    for index, destination in enumerate(destinations):
+        for other in destinations[index + 1 :]:
+            if _paths_overlap(destination, other):
+                raise ReplayError(f"transaction destinations overlap: {destination} and {other}")
+
+    prepared: list[dict[str, Any]] = []
+    succeeded = False
+    try:
+        for stage, raw_destination in staged_trees:
+            destination = raw_destination.resolve()
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists() and not destination.is_dir():
+                raise ReplayError(f"transaction destination must be a directory: {destination}")
+            candidate = Path(
+                tempfile.mkdtemp(prefix=f".{destination.name}.candidate-", dir=destination.parent)
+            )
+            backup_root = Path(
+                tempfile.mkdtemp(prefix=f".{destination.name}.backup-", dir=destination.parent)
+            )
+            entry = {
+                "destination": destination,
+                "candidate": candidate,
+                "backup_root": backup_root,
+                "backup": backup_root / "previous",
+                "backup_moved": False,
+                "candidate_committed": False,
+            }
+            prepared.append(entry)
+            shutil.copytree(stage, candidate, dirs_exist_ok=True)
+
+        for entry in prepared:
+            destination = entry["destination"]
+            if destination.exists():
+                os.replace(destination, entry["backup"])
+                entry["backup_moved"] = True
+            os.replace(entry["candidate"], destination)
+            entry["candidate_committed"] = True
+        succeeded = True
+    except Exception as exc:
+        rollback_errors: list[str] = []
+        for entry in reversed(prepared):
+            destination = entry["destination"]
+            try:
+                if entry["candidate_committed"] and destination.exists():
+                    shutil.rmtree(destination)
+                if entry["backup_moved"] and entry["backup"].exists():
+                    os.replace(entry["backup"], destination)
+            except Exception as rollback_exc:  # pragma: no cover - catastrophic filesystem path
+                rollback_errors.append(f"{destination}: {rollback_exc}")
+        if rollback_errors:
+            raise ReplayError(
+                f"golden publication failed ({exc}); rollback also failed: "
+                + "; ".join(rollback_errors)
+            ) from exc
+        raise
+    finally:
+        for entry in prepared:
+            candidate = entry["candidate"]
+            backup_root = entry["backup_root"]
+            backup = entry["backup"]
+            if candidate.exists():
+                shutil.rmtree(candidate)
+            if succeeded:
+                try:
+                    _cleanup_backup(backup_root)
+                except OSError:
+                    pass
+            elif backup_root.exists() and not backup.exists():
+                shutil.rmtree(backup_root)
+
+
 def execute_replay(
     repo_root: Path,
     spec_path: Path,
@@ -866,6 +1304,7 @@ def execute_replay(
         if name not in inputs:
             raise ReplayError(f"unknown input override: {name}")
         inputs[name] = Path(path).resolve()
+    _validate_runtime_output(repo_root, spec_path, spec, inputs, output_dir)
 
     completed_steps: list[int] = []
     artifacts: dict[str, dict[str, Any]] = {}
@@ -1045,18 +1484,24 @@ def check_goldens(repo_root: Path, coverage_path: Path, report_path: Path | None
         if report_path:
             _write_json(
                 report_path,
-                {"schema_version": 1, "phase": 1, "issue": 294, "rows": rows},
+                {"schema_version": 1, "phase": 2, "issue": 294, "rows": rows},
             )
     return all_differences
 
 
 def generate_goldens(repo_root: Path, coverage_path: Path) -> None:
     validate_coverage(repo_root, coverage_path)
-    for _workflow_id, spec_path, entry in _covered_specs(coverage_path):
-        spec = load_yaml(spec_path)
-        for variant in entry["variants"]:
-            destination = spec_path.parent / spec["variants"][variant]["golden_dir"]
-            execute_replay(repo_root, spec_path, variant, destination)
+    staged_trees: list[tuple[Path, Path]] = []
+    with tempfile.TemporaryDirectory(prefix="workflow-replay-generate-") as temp_name:
+        temp = Path(temp_name)
+        for workflow_id, spec_path, entry in _covered_specs(coverage_path):
+            spec = load_yaml(spec_path)
+            for variant in entry["variants"]:
+                staged = temp / workflow_id / variant
+                execute_replay(repo_root, spec_path, variant, staged)
+                destination = (spec_path.parent / spec["variants"][variant]["golden_dir"]).resolve()
+                staged_trees.append((staged, destination))
+        _publish_trees_transactionally(staged_trees)
 
 
 def build_parser() -> argparse.ArgumentParser:
