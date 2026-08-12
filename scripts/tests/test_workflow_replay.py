@@ -33,15 +33,20 @@ COVERAGE = ROOT / "examples" / "workflows" / "replay-coverage.yaml"
 SPEC = ROOT / "examples" / "workflows" / "stockbee-fluency-loop" / "replay.yaml"
 
 
-def test_coverage_is_complete_and_phase2_deferrals_are_frozen() -> None:
+def test_coverage_is_complete_and_three_of_eleven_deferrals_are_frozen() -> None:
     summary = validate_coverage(ROOT, COVERAGE)
 
-    assert summary["covered"] == ["stockbee-20pct-study-daily", "stockbee-fluency-loop"]
+    assert summary["covered"] == [
+        "stockbee-20pct-study-daily",
+        "stockbee-fluency-loop",
+        "trade-memory-loop",
+    ]
     assert set(summary["deferred"]) == FROZEN_DEFERRED_WORKFLOWS
-    assert len(summary["deferred"]) == 9
+    assert len(summary["deferred"]) == 8
     assert summary["variants"] == {
         "stockbee-20pct-study-daily": ["required-only", "full-path"],
         "stockbee-fluency-loop": ["required-only", "full-path"],
+        "trade-memory-loop": ["required-only", "full-path"],
     }
 
 
@@ -54,10 +59,10 @@ def test_new_workflow_cannot_be_silently_deferred() -> None:
 
     coverage["deferred"]["new-workflow"] = {
         "issue": 294,
-        "reason": "Do not allow new Phase 2 deferrals.",
+        "reason": "Do not allow new coverage 3/11 deferrals.",
     }
     errors = coverage_errors(workflow_ids, coverage)
-    assert any("frozen Phase 2 deferred set" in error for error in errors)
+    assert any("frozen coverage 3/11 deferred set" in error for error in errors)
 
 
 def test_pilot_spec_matches_workflow_and_requires_offline_prices() -> None:

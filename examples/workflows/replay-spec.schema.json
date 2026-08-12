@@ -37,7 +37,15 @@
         "properties": {
           "step": {"type": "integer", "minimum": 1},
           "executor": {"type": "string", "minLength": 1},
-          "executor_mode": {"enum": ["native_cli", "manual_contract"]},
+          "executor_mode": {
+            "enum": ["native_cli", "native_api", "manual_contract", "composite"]
+          },
+          "executor_components": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"enum": ["native_cli", "native_api", "manual_contract"]}
+          },
           "gate_policy": {"enum": ["continue", "halt", "record_only"]},
           "output_files": {
             "type": "object",

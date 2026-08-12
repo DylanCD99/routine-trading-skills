@@ -412,10 +412,7 @@ def test_digest_allowlist_is_explicit_and_golden_outputs_are_marked() -> None:
     rendered = replay_module._dump_yaml_with_digest_allowlist(
         {
             "source_sha256": {
-                "setup_fluency_summary": digest,
-                "rule_candidates": digest,
-                "twenty_pct_cohort_summary": digest,
-                "edge_hints_yaml": digest,
+                **{key: digest for key in replay_module.DIGEST_ALLOWLIST_KEYS},
                 "unrelated_digest": digest,
             }
         }
