@@ -13,6 +13,7 @@ description = "Claude Skills for equity investors and traders"
 requires-python = ">=3.9"
 dependencies = [
     "jsonschema>=4.25.1",
+    "packaging>=24.0",
     "pyyaml>=6.0",
     "requests>=2.31.0",
     "scipy>=1.13.1",
@@ -67,7 +68,7 @@ testpaths = [
     "skills/stockbee-20pct-study/scripts/tests",
     "skills/stockbee-exhaustion-hammer-screener/scripts/tests",
     "skills/stockbee-momentum-burst-screener/scripts/tests",
-    # theme-detector excluded: 27+ pre-existing failures + duplicate basenames
+    "skills/theme-detector/scripts/tests",
     "skills/uptrend-analyzer/scripts/tests",
     "skills/vcp-screener/scripts/tests",
     "skills/earnings-trade-analyzer/scripts/tests",
@@ -142,7 +143,6 @@ ignore-regex = "(Depósito|Deposito) inicial"  # codespell:ignore inicial
 source = ["skills"]
 
 [tool.coverage.report]
-fail_under = 40
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

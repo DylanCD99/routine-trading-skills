@@ -35,6 +35,7 @@ skills:
     display_name: <Human Title>
     category: <one of categories>
     status: production | beta | experimental | deprecated
+    knowledge_only: true  # required only for script-free production skills
     verification:
       instruction_contract: passed | not_verified | not_applicable
       unit_tests: passed | not_verified | not_applicable
@@ -72,6 +73,13 @@ skills:
 | `category` | One of the 8 enum values above. | `IDX005` |
 | `status` | One of `production` / `beta` / `experimental` / `deprecated`. | `IDX006` |
 | `summary` | Non-empty string. | `IDX009` |
+
+`knowledge_only: true` is the explicit CI exemption marker for a production
+skill that has no executable Python files at any depth under `scripts/`. The field
+must be boolean, may only be true on a production skill, and conflicts with any
+`scripts/**/*.py` file outside `tests/`, other than `__init__.py` (`IDX014`).
+Executable skills must ship canonical tests and cannot use this marker to
+bypass the test gate.
 
 **Best-effort** (warn-only by default; required under `--strict-metadata`):
 
@@ -444,6 +452,7 @@ python3 scripts/validate_skills_index.py --strict-metadata
 |---|---|
 | `IDX012` | Integration uses an `unknown` marker (`id` / `type` / `requirement`); flagged for owner review. Warning by default; error under `--strict-metadata`. |
 | `IDX013` | Missing production `verification` block, or a present block has the wrong type, missing/unknown axes, or invalid enum values. Missing block warns by default and errors under `--strict-metadata`; malformed present blocks always error. |
+| `IDX014` | Invalid `knowledge_only` type, non-production use, or conflict with executable Python scripts. |
 
 ### Workflow-level (strict-workflows)
 

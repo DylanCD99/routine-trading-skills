@@ -997,6 +997,7 @@ skills:
   display_name: Market News Analyst
   category: market-regime
   status: production
+  knowledge_only: true
   verification:
     instruction_contract: not_verified
     unit_tests: not_applicable
@@ -1337,6 +1338,7 @@ skills:
   display_name: Scenario Analyzer
   category: strategy-research
   status: production
+  knowledge_only: true
   verification:
     instruction_contract: not_verified
     unit_tests: not_applicable
@@ -1978,6 +1980,7 @@ skills:
   display_name: US Stock Analysis
   category: trade-planning
   status: production
+  knowledge_only: true
   verification:
     instruction_contract: not_verified
     unit_tests: not_applicable
