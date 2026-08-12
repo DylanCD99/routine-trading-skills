@@ -61,13 +61,41 @@ waivers expire on 2026-10-31 and link to Issue #293.
 
 ### Burn-down schedule
 
-1. By 2026-08-31, prioritize skills below 50% and add happy-path, boundary,
-   error-path, and fail-closed tests around production code.
-2. By 2026-09-30, bring every remaining non-core executable to at least 70%
-   and remove its waiver as soon as it passes.
-3. By 2026-10-31, bring the four core skills to at least 85%, raise the
-   executable-code repository aggregate to at least 75%, and remove all
-   coverage waivers.
+The 2026-08-11 local planning snapshot measured 27 waived skills and estimated
+2,709 additional covered executable lines to reach every tier target. That
+estimate is for workload planning only: Ubuntu/Python 3.9 CI at each pull
+request head is authoritative because platform-specific imports and branches
+can change both the numerator and denominator.
+
+| Week ending | Skills | Planning lift (covered lines) |
+|---|---|---:|
+| 2026-08-16 | `us-market-bubble-detector`, `economic-calendar-fetcher`, `pead-screener` | 46 |
+| 2026-08-23 | `breadth-chart-analyst`, `position-sizer`, `market-breadth-analyzer` | 446 |
+| 2026-08-30 | `edge-candidate-agent`, `canslim-screener`, `earnings-trade-analyzer` | 666 |
+| 2026-09-06 | `ibd-distribution-day-monitor`, `value-dividend-screener`, `institutional-flow-tracker` | 505 |
+| 2026-09-13 | `dividend-growth-pullback-screener`, `signal-postmortem`, `ftd-detector` | 349 |
+| 2026-09-20 | `stockbee-setup-fluency-trainer`, `pair-trade-screener`, `stockbee-momentum-burst-screener` | 258 |
+| 2026-09-27 | `stockbee-exhaustion-hammer-screener`, `earnings-calendar`, `stockbee-episodic-pivot-analyzer` | 230 |
+| 2026-10-04 | `skill-idea-miner`, `downtrend-duration-analyzer`, `edge-strategy-designer` | 156 |
+| 2026-10-11 | `strategy-pivot-designer`, `skill-designer`, `stockbee-20pct-study` | 53 |
+
+This completes the planned per-skill work by 2026-10-11 and leaves October
+12-31 for Ubuntu/Python 3.9 variance, full-matrix reruns, and removal of any
+remaining waiver before expiry. The aggregate planning snapshot was 72.963%,
+about 983 covered lines below 75%; the cumulative schedule crosses that local
+estimate by 2026-08-30. Capture the exact CI aggregate at every pull request
+head and remove the aggregate waiver no later than 2026-09-06 once the
+authoritative report reaches 75%.
+
+Each batch must add behavioral happy-path, boundary, error-path, and relevant
+fail-closed assertions. Do not improve the percentage with `# pragma: no
+cover`, coverage omit/source changes, file relocation, generated-code
+exclusions, test-only production execution, or production-line deletion whose
+sole purpose is denominator reduction. Local preflight must reach at least
+71.0% for a 70% skill (or 86.0% for an 85% core skill); the waiver is removed
+only after the exact Ubuntu/Python 3.9 CI command reports at least the policy
+target at the pull request head. If platform results differ, keep the waiver
+and add behavioral tests.
 
 `allowed_failures` are separate from coverage waivers. They permit a matrix row
 to be non-blocking only when the entry has its own future expiry, linked issue,

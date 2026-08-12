@@ -58,12 +58,6 @@ coverage:
       expires_on: "2026-10-31"
       issue: 293
       reason: Ratchet from the 2026-08-10 executable-code baseline.
-    economic-calendar-fetcher:
-      floor: 69
-      target: 70
-      expires_on: "2026-10-31"
-      issue: 293
-      reason: Ratchet from the 2026-08-10 executable-code baseline.
     edge-candidate-agent:
       floor: 40
       target: 70
@@ -102,12 +96,6 @@ coverage:
       reason: Ratchet from the 2026-08-10 executable-code baseline.
     pair-trade-screener:
       floor: 56
-      target: 70
-      expires_on: "2026-10-31"
-      issue: 293
-      reason: Ratchet from the 2026-08-10 executable-code baseline.
-    pead-screener:
-      floor: 69
       target: 70
       expires_on: "2026-10-31"
       issue: 293
@@ -168,12 +156,6 @@ coverage:
       reason: Ratchet from the 2026-08-10 executable-code baseline.
     strategy-pivot-designer:
       floor: 63
-      target: 70
-      expires_on: "2026-10-31"
-      issue: 293
-      reason: Ratchet from the 2026-08-10 executable-code baseline.
-    us-market-bubble-detector:
-      floor: 43
       target: 70
       expires_on: "2026-10-31"
       issue: 293

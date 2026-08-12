@@ -71,6 +71,8 @@ python3 skills/pre-trade-discipline-gate/scripts/check_pre_trade_discipline.py \
 
 Actionable intents are `ENTRY_READY`, `ACTIONABLE`, `ACTIONABLE_DAY1`, and `MANUAL_ORDER`. Watchlist or ignored candidates are recorded as `NO_ACTIONABLE_ORDERS`.
 
+Both `planned_risk_dollars` and `actual_risk_dollars` are required for actionable candidates. Each accepts a finite, non-negative number or numeric string, including zero. Missing values, booleans, non-numeric strings, `NaN`, infinities, and negative values produce `REVIEW_REQUIRED` and are recorded as JSON `null`. When both values are valid, actual risk above planned risk produces `NO_GO`.
+
 ---
 
 ## 4. Decisions
@@ -90,4 +92,4 @@ Use `--fail-on-non-go` when shell automation should return exit code `2` for non
 
 When a candidate has `thesis_id` and `--state-dir` is supplied, the generated JSON report is added to the thesis `linked_reports` list. The skill does not call `mark_reviewed`, so monitoring review dates are not advanced.
 
-The JSON report and JSONL journal keep each candidate's `checklist_answers`, including written-plan, stop, size, risk-dollar, and notes fields, so later reviews can audit what was answered before the order.
+The JSON report and JSONL journal keep each candidate's `checklist_answers`, including written-plan, stop, size, risk-dollar, and notes fields, so later reviews can audit what was answered before the order. Valid risk values retain their original representation; invalid risk values are stored as JSON `null`.

@@ -71,6 +71,8 @@ python3 skills/pre-trade-discipline-gate/scripts/check_pre_trade_discipline.py \
 
 注文ゲート対象は `ENTRY_READY`, `ACTIONABLE`, `ACTIONABLE_DAY1`, `MANUAL_ORDER` です。watchlistやignoreの候補は `NO_ACTIONABLE_ORDERS` として記録されます。
 
+注文対象の候補には `planned_risk_dollars` と `actual_risk_dollars` の両方が必須です。各値には、ゼロを含む有限の非負数または数値文字列を指定します。値の欠落、真偽値、数値でない文字列、`NaN`、無限大、負数は `REVIEW_REQUIRED` となり、記録上は JSON の `null` に正規化されます。両方が有効で、実際のリスクが計画リスクを上回る場合は `NO_GO` になります。
+
 ---
 
 ## 4. 判定
@@ -90,4 +92,4 @@ python3 skills/pre-trade-discipline-gate/scripts/check_pre_trade_discipline.py \
 
 候補に `thesis_id` があり、`--state-dir` を指定した場合、生成したJSON reportをthesisの `linked_reports` に追加します。`mark_reviewed` は呼ばないため、monitoringのレビュー日は進みません。
 
-JSON reportとJSONL journalには、候補ごとの `checklist_answers` として、計画、ストップ、サイズ、リスク金額、メモの回答が残ります。これにより、GO判定も後から監査できます。
+JSON reportとJSONL journalには、候補ごとの `checklist_answers` として、計画、ストップ、サイズ、リスク金額、メモの回答が残ります。有効なリスク値は入力時の表現を維持し、無効なリスク値は JSON の `null` として保存されます。これにより、GO判定も後から監査できます。
