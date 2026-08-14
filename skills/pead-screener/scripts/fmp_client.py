@@ -34,6 +34,109 @@ except ModuleNotFoundError:  # loaded by file path (e.g. repo-level contract tes
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from _fmp_compat import v3_to_stable
 
+# --- yfinance fallback (PATCH 2026-08-13, re-apply after any client regen) ---
+# The FMP Basic tier 402/403s on price + profile endpoints and trips a 250/day
+# cap. Without this the screener silently returns nothing. Same patch shape as
+# vcp-screener / canslim-screener.
+
+_yf_hist_cache: dict = {}
+
+# Trailing tokens that are exchange codes, not share classes. BRK.B must become
+# BRK-B for yfinance; SAP.DE must stay SAP.DE.
+_YF_EXCHANGE_SUFFIXES = {
+    "L", "DE", "AS", "PA", "MI", "MC", "BR", "LS", "VI", "SW", "ST", "OL",
+    "CO", "HE", "IR", "AX", "NZ", "TO", "V", "HK", "T", "KS", "KQ", "SS",
+    "SZ", "TW", "SI", "NS", "BO", "SA", "MX", "F", "BE", "HM", "MU", "SG",
+}
+
+
+def _yf_sym(symbol: str) -> str:
+    if "." not in symbol:
+        return symbol
+    head, _, tail = symbol.rpartition(".")
+    if tail.upper() in _YF_EXCHANGE_SUFFIXES:
+        return symbol
+    return symbol.replace(".", "-")
+
+
+def _yf_fetch_history(symbol: str, days: int = 90) -> Optional[dict]:
+    """Fetch OHLCV from yfinance, reshaped into the v3 dict the screener expects."""
+    key = (symbol, days)
+    if key in _yf_hist_cache:
+        return _yf_hist_cache[key]
+    try:
+        import yfinance as yf
+    except ImportError:
+        return None
+    try:
+        # Calendar days, padded for weekends/holidays.
+        period_days = int(days * 1.6) + 10
+        df = yf.Ticker(_yf_sym(symbol)).history(
+            period=f"{period_days}d", auto_adjust=False
+        )
+        if df is None or df.empty:
+            return None
+        df = df.dropna(subset=["Close"])  # yfinance's latest row is often NaN
+        if df.empty:
+            return None
+        hist = []
+        for idx, row in df.iterrows():
+            close = float(row["Close"])
+            hist.append(
+                {
+                    "date": idx.strftime("%Y-%m-%d"),
+                    "open": float(row["Open"]),
+                    "high": float(row["High"]),
+                    "low": float(row["Low"]),
+                    "close": close,
+                    "adjClose": close,
+                    "volume": int(row["Volume"]) if row["Volume"] == row["Volume"] else 0,
+                }
+            )
+        hist.reverse()  # FMP returns most-recent-first
+        out = {"symbol": symbol, "historical": hist[:days]}
+        _yf_hist_cache[key] = out
+        return out
+    except Exception:
+        return None
+
+
+def _yf_profile(symbol: str) -> Optional[dict]:
+    """Minimal profile from yfinance, shaped like the FMP /profile row."""
+    try:
+        import yfinance as yf
+    except ImportError:
+        return None
+    try:
+        t = yf.Ticker(_yf_sym(symbol))
+        mcap, price = 0, 0.0
+        try:
+            fi = t.fast_info
+            mcap = int(fi.get("market_cap") or 0)
+            price = float(fi.get("last_price") or 0.0)
+        except Exception:
+            pass
+        info = {}
+        if not mcap:
+            try:
+                info = t.info or {}
+                mcap = int(info.get("marketCap") or 0)
+                price = float(info.get("currentPrice") or price or 0.0)
+            except Exception:
+                info = {}
+        return {
+            "symbol": symbol,
+            "companyName": info.get("longName") or info.get("shortName") or symbol,
+            "marketCap": mcap,
+            "sector": info.get("sector") or "Unknown",
+            "industry": info.get("industry") or "Unknown",
+            "price": price,
+            "exchangeShortName": info.get("exchange") or "",
+        }
+    except Exception:
+        return None
+
+
 # --- FMP endpoint fallback: stable (new users) -> v3 (legacy users) ---
 
 
@@ -364,6 +467,13 @@ class FMPClient:
                     # "symbol" is still returned under the requested symbol.
                     self.cache[cache_key] = profile
                     results[profile.get("symbol", symbol)] = profile
+                    continue
+            # PATCH 2026-08-13: FMP tier-capped -> yfinance. This method gates the
+            # market-cap filter, so with no fallback every candidate is dropped.
+            profile = _yf_profile(symbol)
+            if profile:
+                self.cache[cache_key] = profile
+                results[symbol] = profile
         return results
 
     def get_historical_prices(self, symbol: str, days: int = 90) -> Optional[dict]:
@@ -383,6 +493,8 @@ class FMPClient:
             return self.cache[cache_key]
 
         data = self._request_with_fallback("historical", symbol, {"timeseries": days})
+        if not data:  # PATCH 2026-08-13: FMP tier-capped -> yfinance
+            data = _yf_fetch_history(symbol, days)
         if data:
             self.cache[cache_key] = data
         return data

@@ -201,18 +201,28 @@ def main():
 
     # Filter by market cap and US exchange
     candidates = []
+    # PATCH 2026-08-14: funnel counters. "Candidates after filtering: 0" with no
+    # breakdown is undiagnosable — it looks identical whether the calendar
+    # returned foreign micro-caps, the profile fallback failed, or the exchange
+    # codes didn't map. Count each cut so a zero result says why.
+    _cut = {"no_profile": 0, "mktcap": 0, "exchange": 0}
+    _seen_exch: dict = {}
     for earning in earnings:
         symbol = earning.get("symbol")
         if not symbol or symbol not in profiles:
+            _cut["no_profile"] += 1
             continue
 
         profile = profiles[symbol]
         market_cap = profile.get("mktCap", 0)
         exchange = profile.get("exchangeShortName", "")
+        _seen_exch[exchange] = _seen_exch.get(exchange, 0) + 1
 
         if market_cap < args.min_market_cap:
+            _cut["mktcap"] += 1
             continue
         if exchange not in FMPClient.US_EXCHANGES:
+            _cut["exchange"] += 1
             continue
 
         timing = normalize_timing(earning.get("time"))
@@ -228,6 +238,17 @@ def main():
                 "price": profile.get("price", 0),
             }
         )
+
+    # PATCH 2026-08-14: report the funnel so a zero result is diagnosable.
+    print(
+        f"Filter funnel: {len(earnings)} announcements -> "
+        f"{_cut['no_profile']} no profile, "
+        f"{_cut['mktcap']} below ${args.min_market_cap:,.0f} mktcap, "
+        f"{_cut['exchange']} non-US exchange -> {len(candidates)} candidates"
+    )
+    if _seen_exch:
+        top = sorted(_seen_exch.items(), key=lambda kv: -kv[1])[:8]
+        print("  exchanges seen: " + ", ".join(f"{k or '(blank)'}={v}" for k, v in top))
 
     # Deduplicate by symbol (keep first occurrence)
     seen = set()

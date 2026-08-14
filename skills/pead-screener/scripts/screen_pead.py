@@ -489,7 +489,14 @@ def main():
             )
 
         # Apply min-gap filter (using actual price gap, not EPS estimate)
-        if mode == "A" and abs(gap_pct) < args.min_gap:
+        # PATCH 2026-08-14: was abs(gap_pct), which admitted gap-DOWNS. PEAD is
+        # drift following a POSITIVE surprise — see references/pead_strategy.md,
+        # step 1: "Stock gaps up 3%+ on earnings announcement". On the 2026-08-14
+        # run this let 11 of 19 names through on negative gaps, including TSLA at
+        # -8.8%, whose page then read "Solid PEAD setup, standard position size".
+        # A red-candle-pullback-breakout after a gap DOWN is a bounce in something
+        # that was just punished, not post-earnings drift.
+        if mode == "A" and gap_pct < args.min_gap:
             continue
 
         # Run analysis
@@ -632,7 +639,9 @@ def _get_candidates_mode_a(client: FMPClient, args) -> list[dict]:
         profile = profiles.get(symbol, {})
 
         # Market cap filter
-        market_cap = profile.get("mktCap", 0) or 0
+        # PATCH 2026-08-14: FMP's stable /profile endpoint returns "marketCap",
+        # not the legacy v3 "mktCap" key; check both so real caps aren't zeroed out.
+        market_cap = profile.get("marketCap") or profile.get("mktCap") or 0
         if market_cap < args.min_market_cap:
             continue
 
