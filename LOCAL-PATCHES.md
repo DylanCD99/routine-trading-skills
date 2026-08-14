@@ -71,8 +71,15 @@ That bug mattered more than its size suggests. The fallback masked it completely
 worked, just never via FMP. It would also have survived a paid upgrade, which defeats the point
 of keeping FMP as the primary path.
 
-Every patched file is now a **pure superset** of upstream HEAD — additions only, nothing
-removed — so `git merge upstream/main` should apply cleanly.
+Four files are now **pure supersets** of upstream HEAD — additions only, zero deletions:
+both `earnings-trade-analyzer` files, `pead-screener/fmp_client.py`, and
+`ftd-detector/fmp_client.py`.
+
+The other six carry deletions, and that is expected rather than a warning sign. A fallback has
+to *hook into* the existing code path, so lines get replaced, not just added — `vcp-screener/
+fmp_client.py` is +219/−49 because the FMP-then-yfinance ordering restructures the request
+path, and `macro-regime-detector/calculators/utils.py` is +2/−1 because the NaN guard replaces
+the `close == 0` test rather than sitting beside it.
 
 ### How this was worked out
 
@@ -86,6 +93,11 @@ for c in $(git log --format=%H upstream/main -- "$FILE"); do
 done | sort -n | head -1
 ```
 
-Then `git log <base>..upstream/main -- "$FILE"` lists exactly what has to be ported. Checking
-`git diff --numstat` against upstream HEAD afterwards confirms it: a clean patch shows
-additions and **zero deletions**.
+Then `git log <base>..upstream/main -- "$FILE"` lists exactly what has to be ported — usually a
+much shorter list than the raw diff against HEAD suggests.
+
+Do **not** use "zero deletions" as the pass condition. It holds for a bolt-on patch but not for
+one that hooks into an existing path, and six of these legitimately delete lines. The check that
+actually matters is whether any upstream *behaviour* is gone, which means reading the deleted
+lines. Counting them tells you nothing on its own — that assumption is what caused
+`skill-patches` to look healthy while it was quietly reverting upstream work.
