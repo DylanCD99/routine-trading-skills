@@ -23,11 +23,12 @@ def downsample_to_monthly(daily_history: list[dict]) -> list[dict]:
         return []
 
     # Group by year-month, pick the most recent bar per month
+    import math
     monthly = {}
     for bar in daily_history:
         date_str = bar.get("date", "")
         close = bar.get("adjClose", bar.get("close", 0))
-        if not date_str or close == 0:
+        if not date_str or not close or (isinstance(close, float) and math.isnan(close)):
             continue
 
         # Extract year-month key

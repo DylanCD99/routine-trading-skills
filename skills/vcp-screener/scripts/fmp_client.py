@@ -124,13 +124,220 @@ def _normalize_eod_flat_list(data, symbols_str: str, limit: Optional[int] = None
     return {"symbol": matched_symbol or symbols_str, "historical": historical}
 
 
+# --- yfinance fallback (free, no API key) for FMP free-tier 402/403 ---
+# FMP's free tier no longer serves the legacy quote / historical endpoints
+# (HTTP 402/403 after the 2025-08-31 cutoff). yfinance supplies the same
+# OHLCV data with no key, so we transparently fall back to it and reshape the
+# result into the v3-compatible dicts the screener already expects.
+
+_YF_AVAILABLE = None
+_yf_hist_cache: dict = {}
+
+
+def _yf_ok() -> bool:
+    global _YF_AVAILABLE
+    if _YF_AVAILABLE is None:
+        try:
+            import yfinance  # noqa: F401
+
+            _YF_AVAILABLE = True
+        except Exception:
+            _YF_AVAILABLE = False
+    return _YF_AVAILABLE
+
+
+# yfinance writes a US share class with a dash (BRK.B -> BRK-B) but keeps the dot
+# for an exchange suffix (SAP.DE, VOD.L). A blanket dot->dash swap therefore turns
+# every non-US ticker into a symbol Yahoo has never heard of, and the screen comes
+# back empty for the whole universe. Only swap when the trailing token is NOT a
+# known exchange code. Share-class letters (A/B/C/...) are deliberately absent.
+_YF_EXCHANGE_SUFFIXES = {
+    "L", "DE", "AS", "HE", "PA", "BR", "MI", "MC", "VI", "LS", "IR", "SW",
+    "ST", "OL", "CO", "T", "HK", "AX", "TO", "NZ", "SI", "KS", "KQ", "TW",
+    "SA", "MX", "BO", "NS", "IS", "F", "BE", "DU", "HM", "MU", "SG", "WA",
+    "PR", "AT", "TA", "JO", "CN", "NE", "VX", "OQ",
+}
+
+
+def _yf_sym(symbol: str) -> str:
+    """Translate an internal symbol into the form yfinance expects."""
+    head, sep, tail = symbol.rpartition(".")
+    if sep and tail.upper() in _YF_EXCHANGE_SUFFIXES:
+        return symbol
+    return symbol.replace(".", "-")
+
+
+def _yf_fetch_history(symbol: str, days: int) -> Optional[list]:
+    """Fetch OHLCV via yfinance as v3-shaped rows (most-recent-first), or None."""
+    if not _yf_ok():
+        return None
+    key = (symbol, days)
+    if key in _yf_hist_cache:
+        return _yf_hist_cache[key]
+    import yfinance as yf
+
+    yf_symbol = _yf_sym(symbol)
+    # `days` is trading bars; scale to calendar days (~252/yr) with headroom.
+    # A fixed "2y" silently truncated --history 1260 to 502 bars while the
+    # report still claimed scan_days=1260.
+    period_days = max(int(days * 1.6) + 15, 400) if days else 400
+    try:
+        df = yf.Ticker(yf_symbol).history(period=f"{period_days}d", auto_adjust=False)
+    except Exception:
+        _yf_hist_cache[key] = None
+        return None
+    if df is None or df.empty:
+        _yf_hist_cache[key] = None
+        return None
+    if "Close" not in df.columns:  # same malformed-frame guard as _df_to_rows
+        _yf_hist_cache[key] = None
+        return None
+    df = df.dropna(subset=["Close"])  # drop partial/empty trailing rows (yfinance quirk)
+    if df.empty:
+        _yf_hist_cache[key] = None
+        return None
+    rows = []
+    for idx, r in df.iterrows():
+        try:
+            close = float(r["Close"])
+            rows.append(
+                {
+                    "date": idx.strftime("%Y-%m-%d"),
+                    "open": float(r["Open"]),
+                    "high": float(r["High"]),
+                    "low": float(r["Low"]),
+                    "close": close,
+                    "adjClose": float(r["Adj Close"]) if "Adj Close" in r else close,
+                    "volume": float(r["Volume"]),
+                }
+            )
+        except Exception:
+            continue
+    rows.reverse()  # yfinance is oldest-first; v3 contract is most-recent-first
+    if days and days > 0:
+        rows = rows[:days]
+    result = rows or None
+    _yf_hist_cache[key] = result
+    return result
+
+
+def _df_to_rows(df, days: int) -> Optional[list]:
+    """Shared v3-shaping for a single-ticker yfinance frame."""
+    if df is None or df.empty:
+        return None
+    # A throttled ticker inside a multi-ticker download comes back as a frame with
+    # no OHLCV columns at all, and dropna(subset=["Close"]) raises KeyError on it
+    # rather than returning empty -- which killed the whole 1001-name run. Treat it
+    # as a miss so the caller leaves it uncached for the per-symbol retry.
+    if "Close" not in df.columns:
+        return None
+    df = df.dropna(subset=["Close"])  # drop partial/empty trailing rows (yfinance quirk)
+    if df.empty:
+        return None
+    rows = []
+    for idx, r in df.iterrows():
+        try:
+            close = float(r["Close"])
+            rows.append(
+                {
+                    "date": idx.strftime("%Y-%m-%d"),
+                    "open": float(r["Open"]),
+                    "high": float(r["High"]),
+                    "low": float(r["Low"]),
+                    "close": close,
+                    "adjClose": float(r["Adj Close"]) if "Adj Close" in r else close,
+                    "volume": float(r["Volume"]),
+                }
+            )
+        except Exception:
+            continue
+    rows.reverse()  # yfinance is oldest-first; v3 contract is most-recent-first
+    if days and days > 0:
+        rows = rows[:days]
+    return rows or None
+
+
+def _yf_prefetch(symbols: list, days: int = 260) -> None:
+    """Bulk-populate _yf_hist_cache via one threaded yfinance download.
+
+    Sequential per-symbol fetches cost ~1.9s each (~16 min for the S&P 500).
+    Entries land under the same (symbol, days) key _yf_fetch_history uses, so
+    callers transparently hit cache. Failures stay uncached for per-symbol retry.
+    """
+    if not _yf_ok():
+        return
+    pending = [s for s in symbols if (s, days) not in _yf_hist_cache]
+    if not pending:
+        return
+    import yfinance as yf
+
+    period_days = max(int(days * 1.6) + 15, 400) if days else 400
+    period = f"{period_days}d"
+    yf_map = {_yf_sym(s): s for s in pending}
+    chunk = 100
+    tickers = list(yf_map.keys())
+    for i in range(0, len(tickers), chunk):
+        batch = tickers[i : i + chunk]
+        try:
+            data = yf.download(
+                tickers=batch,
+                period=period,
+                auto_adjust=False,
+                group_by="ticker",
+                threads=True,
+                progress=False,
+            )
+        except Exception:
+            continue
+        if data is None or data.empty:
+            continue
+        for yf_sym in batch:
+            orig = yf_map[yf_sym]
+            try:
+                sub = data[yf_sym] if len(batch) > 1 else data
+            except Exception:
+                continue
+            rows = _df_to_rows(sub, days)
+            if rows:  # leave misses uncached so _yf_fetch_history can retry singly
+                _yf_hist_cache[(orig, days)] = rows
+
+
+def _yf_quote(symbols_str: str) -> Optional[list]:
+    """Synthesize v3-style quote dicts from yfinance history, or None."""
+    quotes = []
+    for sym in symbols_str.split(","):
+        sym = sym.strip()
+        if not sym:
+            continue
+        rows = _yf_fetch_history(sym, 260)
+        if not rows:
+            continue
+        highs = [r["high"] for r in rows]
+        lows = [r["low"] for r in rows]
+        vols = [r["volume"] for r in rows]
+        quotes.append(
+            {
+                "symbol": sym,
+                "price": rows[0]["close"],
+                "yearHigh": max(highs) if highs else 0,
+                "yearLow": min(lows) if lows else 0,
+                "volume": vols[0] if vols else 0,
+                "avgVolume": (sum(vols[:50]) / min(len(vols), 50)) if vols else 0,
+                "marketCap": 0,
+                "name": sym,
+                "sector": "Unknown",
+            }
+        )
+    return quotes or None
+
+
 class FMPClient:
     """Client for Financial Modeling Prep API with rate limiting and caching"""
 
     BASE_URL = "https://financialmodelingprep.com/api/v3"
     RATE_LIMIT_DELAY = 0.3  # 300ms between requests
 
-    _ENDPOINT_FAILURE_THRESHOLD = 3  # disable endpoint after N consecutive failures
+    _ENDPOINT_FAILURE_THRESHOLD = 9999  # never disable; 402s are per-ticker, not endpoint-wide
 
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("FMP_API_KEY")
@@ -316,48 +523,6 @@ class FMPClient:
         if failures >= self._ENDPOINT_FAILURE_THRESHOLD:
             self._disabled_endpoints.add(base_url)
 
-    # Public-dataset fallback for keys where no FMP tier serves constituents:
-    # /stable/sp500-constituent 402s (Restricted Endpoint) on the free tier
-    # and /api/v3/sp500_constituent 403s (Legacy Endpoint) for keys created
-    # after 2025-08-31.
-    _CONSTITUENTS_CSV_URL = (
-        "https://raw.githubusercontent.com/datasets/"
-        "s-and-p-500-companies/main/data/constituents.csv"
-    )
-
-    def _fetch_constituents_csv(self) -> Optional[list[dict]]:
-        """Fetch the public S&P 500 list, mapped to the v3 response shape.
-
-        Uses a bare requests.get, NOT self.session — the FMP apikey header
-        must not leak to a third-party host.
-        """
-        import csv
-        import io
-
-        try:
-            response = requests.get(self._CONSTITUENTS_CSV_URL, timeout=30)
-            if response.status_code != 200:
-                print(
-                    f"ERROR: constituents CSV fallback failed: {response.status_code}",
-                    file=sys.stderr,
-                )
-                return None
-            data = [
-                {
-                    # FMP uses dash-style class symbols (BRK-B), the CSV uses dots.
-                    "symbol": row["Symbol"].replace(".", "-"),
-                    "name": row["Security"],
-                    "sector": row["GICS Sector"],
-                    "subSector": row["GICS Sub-Industry"],
-                }
-                for row in csv.DictReader(io.StringIO(response.text))
-                if row.get("Symbol")
-            ]
-        except (requests.exceptions.RequestException, csv.Error, KeyError) as e:
-            print(f"ERROR: constituents CSV fallback failed: {e}", file=sys.stderr)
-            return None
-        return data or None
-
     def get_sp500_constituents(self) -> Optional[list[dict]]:
         """Fetch S&P 500 constituent list.
 
@@ -373,10 +538,6 @@ class FMPClient:
         # _FMP_ENDPOINTS stable→v3 fallback list, so rewrite at the call site).
         url, params = v3_to_stable(f"{self.BASE_URL}/sp500_constituent")
         data = self._rate_limited_get(url, params)
-        if not data:
-            # No FMP tier serves this list on some keys (402 on stable, 403
-            # on v3) — fall back to the public dataset.
-            data = self._fetch_constituents_csv()
         if data:
             self.cache[cache_key] = data
         return data
@@ -388,14 +549,19 @@ class FMPClient:
             return self.cache[cache_key]
 
         data = self._request_with_fallback("quote", symbols)
+        if not data:  # FMP free-tier blocked -> yfinance fallback
+            data = _yf_quote(symbols)
         if data:
             self.cache[cache_key] = data
         return data
 
     def get_batch_quotes(self, symbols: list[str]) -> dict[str, dict]:
-        """Fetch quotes for a list of symbols, batching up to 5 per request"""
+        """Fetch quotes for a list of symbols, one per request (free-tier compatible)"""
         results = {}
-        batch_size = 5
+        # _yf_quote synthesizes each quote from 260d of history; warm them in one
+        # threaded download so the per-symbol loop below hits cache.
+        _yf_prefetch(list(symbols), 260)
+        batch_size = 1
         for i in range(0, len(symbols), batch_size):
             batch = symbols[i : i + batch_size]
             batch_str = ",".join(batch)
@@ -437,6 +603,10 @@ class FMPClient:
             return self.cache[cache_key]
 
         data = self._request_with_fallback("historical", symbol, {"timeseries": days})
+        if not data:  # FMP free-tier blocked -> yfinance fallback
+            rows = _yf_fetch_history(symbol, days)
+            if rows:
+                data = {"symbol": symbol, "historical": rows}
         if data:
             self.cache[cache_key] = data
         return data

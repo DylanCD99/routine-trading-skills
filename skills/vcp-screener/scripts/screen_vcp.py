@@ -40,12 +40,74 @@ from calculators.trend_template_calculator import calculate_trend_template
 from calculators.vcp_pattern_calculator import calculate_vcp_pattern
 from calculators.volume_pattern_calculator import calculate_volume_pattern
 from fmp_client import FMPClient
-from report_generator import generate_json_report, generate_markdown_report
+from report_generator import _px, generate_json_report, generate_markdown_report
 from scorer import calculate_composite_score
 
 # Historical scan window default (~5 years in trading days). Used by
 # argparse `const=` so bare `--history` keeps the prior default behavior.
 DEFAULT_HISTORY_DAYS = 1260
+
+# yfinance ticker suffix -> (quote currency, divisor to reach major units).
+# London lines quote in PENCE, not pounds, so .L prices divide by 100 before the
+# FX conversion. Without this a 50p share reads as "50" and sails through a price
+# floor written for dollars -- which is exactly how a penny-stock screen happens.
+# Only the pre-filter needs any of this: every VCP metric downstream is a ratio
+# of two prices in the same series, so quote scale cancels out.
+_SUFFIX_CCY = {
+    ".L": ("GBP", 100.0),
+    ".DE": ("EUR", 1.0), ".AS": ("EUR", 1.0), ".HE": ("EUR", 1.0),
+    ".PA": ("EUR", 1.0), ".BR": ("EUR", 1.0), ".MI": ("EUR", 1.0),
+    ".MC": ("EUR", 1.0), ".VI": ("EUR", 1.0), ".LS": ("EUR", 1.0),
+    ".IR": ("EUR", 1.0), ".SW": ("CHF", 1.0), ".ST": ("SEK", 1.0),
+    ".OL": ("NOK", 1.0), ".CO": ("DKK", 1.0), ".T": ("JPY", 1.0),
+    ".HK": ("HKD", 1.0), ".AX": ("AUD", 1.0), ".TO": ("CAD", 1.0),
+}
+
+
+def build_usd_factors(symbols: list[str]) -> dict[str, float]:
+    """Map each symbol to the multiplier that converts its quote into USD.
+
+    Unsuffixed (US) symbols get 1.0 without any network call, so a plain S&P run
+    behaves exactly as before. If an FX rate cannot be fetched the symbol also
+    falls back to 1.0 and a warning is printed -- silently treating GBp as USD
+    would corrupt the filter rather than merely loosen it.
+    """
+    needed = set()
+    for s in symbols:
+        for suf, (ccy, _) in _SUFFIX_CCY.items():
+            if s.upper().endswith(suf.upper()):
+                needed.add(ccy)
+                break
+    if not needed:
+        return {s: 1.0 for s in symbols}
+
+    rates = {}
+    try:
+        import yfinance as yf
+
+        for ccy in needed:
+            # JPY/HKD/etc quote as CCY-per-USD; the majors quote as USD-per-CCY.
+            pair = f"{ccy}USD=X" if ccy in ("GBP", "EUR", "CHF", "AUD",
+                                            "SEK", "NOK", "DKK", "CAD") else f"{ccy}=X"
+            h = yf.Ticker(pair).history(period="5d")["Close"].dropna()
+            if len(h):
+                r = float(h.iloc[-1])
+                rates[ccy] = r if pair.endswith("USD=X") else 1.0 / r
+    except Exception as exc:  # noqa: BLE001 - degrade to 1.0, never abort a screen
+        print(f"  WARN: FX lookup failed ({exc}); price filters stay in quote currency")
+
+    factors = {}
+    for s in symbols:
+        f = 1.0
+        for suf, (ccy, div) in _SUFFIX_CCY.items():
+            if s.upper().endswith(suf.upper()):
+                if ccy in rates:
+                    f = rates[ccy] / div
+                else:
+                    print(f"  WARN: no {ccy} rate for {s}; treating quote as USD")
+                break
+        factors[s] = f
+    return factors
 
 
 def parse_arguments():
@@ -68,6 +130,36 @@ def parse_arguments():
     parser.add_argument("--output-dir", default="reports/", help="Output directory for reports")
     parser.add_argument(
         "--universe", nargs="+", help="Custom symbols to screen (overrides S&P 500)"
+    )
+    parser.add_argument(
+        "--benchmark",
+        default="SPY",
+        help=(
+            "Symbol used as the relative-strength benchmark (default: SPY). "
+            "Match it to the universe or RS is meaningless: ^STOXX for the EU "
+            "universe, ^FTAS for the UK."
+        ),
+    )
+    parser.add_argument(
+        "--min-price",
+        type=float,
+        default=10.0,
+        help="Min price in USD, FX-converted from the quote currency (default: 10)",
+    )
+    parser.add_argument(
+        "--min-avg-volume",
+        type=float,
+        default=200000,
+        help="Min average volume in shares; 0 disables (default: 200000)",
+    )
+    parser.add_argument(
+        "--min-dollar-volume",
+        type=float,
+        default=0.0,
+        help=(
+            "Min average daily turnover in USD; 0 disables (default: 0). Prefer "
+            "this over --min-avg-volume for non-USD universes."
+        ),
     )
     parser.add_argument(
         "--full-sp500",
@@ -254,15 +346,27 @@ def passes_trend_filter(tt_result: dict, trend_min_score: float = 85.0) -> bool:
     return tt_result.get("raw_score", 0) >= trend_min_score
 
 
-def pre_filter_stock(quote: dict) -> tuple:
+def pre_filter_stock(
+    quote: dict,
+    usd_factor: float = 1.0,
+    min_price: float = 10.0,
+    min_avg_volume: float = 200000,
+    min_dollar_volume: float = 0.0,
+) -> tuple:
     """
     Cheap pre-filter using quote data only.
 
     Criteria:
-    - Price > $10
+    - Price > ``min_price``, compared in USD via ``usd_factor``
     - At least 20% above 52-week low
     - Within 30% of 52-week high
-    - Average volume > 200,000
+    - Average volume > ``min_avg_volume`` shares (0 disables)
+    - Average dollar volume > ``min_dollar_volume`` USD (0 disables)
+
+    A share-count floor does not travel across currencies -- 200k shares of a 40p
+    AIM stock is ~$110k of turnover, while 200k shares of a EUR 90 name is $10m.
+    Non-US universes should pass ``--min-avg-volume 0 --min-dollar-volume N``
+    instead. Defaults reproduce the original US behaviour exactly.
 
     Returns:
         (passed: bool, stage2_likelihood_score: float)
@@ -275,9 +379,11 @@ def pre_filter_stock(quote: dict) -> tuple:
     # rejects 100% of the universe. (v3 `avgVolume` still wins when present.)
     avg_volume = quote.get("avgVolume") or quote.get("volume", 0)
 
-    if price <= 10:
+    if price * usd_factor <= min_price:
         return False, 0
-    if avg_volume < 200000:
+    if min_avg_volume and avg_volume < min_avg_volume:
+        return False, 0
+    if min_dollar_volume and avg_volume * price * usd_factor < min_dollar_volume:
         return False, 0
 
     # Check distance from 52w low
@@ -579,19 +685,22 @@ def run_historical(args, client) -> None:
     print(f"Historical VCP Scan — {ticker}")
     print("-" * 70)
     print(
-        f"  Fetching {fetch_days}-day history for {ticker} and SPY...",
+        f"  Fetching {fetch_days}-day history for {ticker} and {args.benchmark}...",
         end=" ",
         flush=True,
     )
     ticker_data = client.get_historical_prices(ticker, days=fetch_days)
-    spy_data = client.get_historical_prices("SPY", days=fetch_days)
+    spy_data = client.get_historical_prices(args.benchmark, days=fetch_days)
     historical = ticker_data.get("historical", []) if ticker_data else []
     sp500_history = spy_data.get("historical", []) if spy_data else []
     if not historical:
         print("FAILED")
         print(f"ERROR: No historical data returned for {ticker}", file=sys.stderr)
         sys.exit(1)
-    print(f"OK ({len(historical)} ticker bars, {len(sp500_history)} SPY bars)")
+    print(
+        f"OK ({len(historical)} ticker bars, "
+        f"{len(sp500_history)} {args.benchmark} bars)"
+    )
     if len(historical) < required_days:
         print(
             f"  WARN: requested ~{required_days} bars but FMP returned "
@@ -723,14 +832,25 @@ def main():
     all_quotes = client.get_batch_quotes(symbols)
     print(f"OK ({len(all_quotes)} quotes)")
 
-    # Apply pre-filter
+    # Apply pre-filter. FX factors are resolved once for the whole universe; a
+    # pure-US universe short-circuits to 1.0 with no network call.
+    usd_factors = build_usd_factors(symbols)
+    non_usd = sum(1 for v in usd_factors.values() if v != 1.0)
+    if non_usd:
+        print(f"  FX-converting {non_usd} non-USD quotes for the price filter")
     print("  Applying pre-filter...", end=" ", flush=True)
     pre_filtered = []
     for sym in symbols:
         quote = all_quotes.get(sym)
         if not quote:
             continue
-        passed, likelihood = pre_filter_stock(quote)
+        passed, likelihood = pre_filter_stock(
+            quote,
+            usd_factor=usd_factors.get(sym, 1.0),
+            min_price=args.min_price,
+            min_avg_volume=args.min_avg_volume,
+            min_dollar_volume=args.min_dollar_volume,
+        )
         if passed:
             pre_filtered.append((sym, likelihood, quote))
 
@@ -748,14 +868,16 @@ def main():
     print("Phase 2: Trend Template Filter")
     print("-" * 70)
 
-    # Fetch SPY historical for RS calculation
-    print("  Fetching SPY 260-day history...", end=" ", flush=True)
-    spy_data = client.get_historical_prices("SPY", days=260)
+    # Fetch benchmark historical for RS calculation
+    print(f"  Fetching {args.benchmark} 260-day history...", end=" ", flush=True)
+    spy_data = client.get_historical_prices(args.benchmark, days=260)
     sp500_history = spy_data.get("historical", []) if spy_data else []
     if sp500_history:
         print(f"OK ({len(sp500_history)} days)")
     else:
-        print("WARN - SPY data unavailable, RS calculations will be limited")
+        print(
+            f"WARN - {args.benchmark} data unavailable, RS calculations will be limited"
+        )
 
     # Fetch historical data for candidates
     candidate_symbols = [c[0] for c in candidates]
@@ -965,7 +1087,7 @@ def main():
         print(f"Top {min(5, len(results))} Results:")
         for i, s in enumerate(results[:5], 1):
             pivot = s.get("vcp_pattern", {}).get("pivot_price")
-            pivot_str = f"Pivot: ${pivot:.2f}" if pivot else ""
+            pivot_str = f"Pivot: {_px(s.get('symbol', ''), pivot)}" if pivot else ""
             print(
                 f"  {i}. {s['symbol']:6} Score: {s['composite_score']:5.1f} "
                 f"({s['rating']}) {pivot_str}"

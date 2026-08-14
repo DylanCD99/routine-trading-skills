@@ -26,6 +26,82 @@ except ImportError:
     print("ERROR: requests library not found. Install with: pip install requests", file=sys.stderr)
     sys.exit(1)
 
+try:
+    import yfinance as _yf
+except ImportError:
+    _yf = None
+
+
+# --- yfinance fallback: FMP free tier returns 402/403 on legacy price endpoints ---
+#
+# Ported from market-top-detector/scripts/fmp_client.py (patched 2026-07-16).
+# Without this, QQQ 403s and the detector silently degrades to a single-index
+# read -- dual_confirmation can never be True, which is most of the point of
+# the skill. ^GSPC currently survives on FMP; QQQ does not.
+
+# FMP tickers -> yfinance equivalents (identity for these, kept for symmetry
+# with the other patched clients and as the hook if a symbol ever diverges)
+_YF_SYMBOL_MAP = {"^GSPC": "^GSPC", "^IXIC": "^IXIC", "QQQ": "QQQ"}
+
+
+def _yf_fetch_history(symbol: str, days: int) -> Optional[dict]:
+    """Fetch OHLCV via yfinance, reshaped to FMP v3 format (most-recent-first)."""
+    if _yf is None:
+        return None
+    yf_symbol = _YF_SYMBOL_MAP.get(symbol, symbol)
+    # Pad the window: `days` means trading bars, and callers need 200 closes for a 200DMA.
+    period_days = max(int(days * 1.6) + 15, 320)
+    try:
+        df = _yf.Ticker(yf_symbol).history(period=f"{period_days}d", auto_adjust=False)
+    except Exception:
+        return None
+    if df is None or df.empty:
+        return None
+    df = df.dropna(subset=["Close"])
+    if df.empty:
+        return None
+    bars = []
+    for idx, row in df.iterrows():
+        bars.append(
+            {
+                "date": idx.strftime("%Y-%m-%d"),
+                "open": float(row["Open"]),
+                "high": float(row["High"]),
+                "low": float(row["Low"]),
+                "close": float(row["Close"]),
+                "adjClose": float(row.get("Adj Close", row["Close"])),
+                "volume": int(row["Volume"]) if row["Volume"] == row["Volume"] else 0,
+            }
+        )
+    bars.reverse()  # FMP returns most-recent-first
+    return {"symbol": symbol, "historical": bars[:days]}
+
+
+def _yf_quote(symbols_str: str) -> Optional[list[dict]]:
+    """Build FMP-shaped quote dicts via yfinance for comma-separated symbols."""
+    if _yf is None:
+        return None
+    out = []
+    for symbol in [s.strip() for s in symbols_str.split(",") if s.strip()]:
+        hist = _yf_fetch_history(symbol, 260)
+        if not hist or not hist["historical"]:
+            continue
+        bars = hist["historical"]
+        closes = [b["close"] for b in bars]
+        volumes = [b["volume"] for b in bars]
+        year_bars = bars[:252]
+        out.append(
+            {
+                "symbol": symbol,
+                "price": closes[0],
+                "yearHigh": max(b["high"] for b in year_bars),
+                "yearLow": min(b["low"] for b in year_bars),
+                "volume": volumes[0] if volumes else 0,
+                "avgVolume": int(sum(volumes[:50]) / len(volumes[:50])) if volumes else 0,
+            }
+        )
+    return out or None
+
 
 # --- FMP endpoint fallback: stable (new users) -> v3 (legacy users) ---
 
@@ -317,6 +393,8 @@ class FMPClient:
             return self.cache[cache_key]
 
         data = self._request_with_fallback("quote", symbols)
+        if not data:
+            data = _yf_quote(symbols)
         if data:
             self.cache[cache_key] = data
         return data
@@ -379,6 +457,8 @@ class FMPClient:
             return self.cache[cache_key]
 
         data = self._request_with_fallback("historical", symbol, {"timeseries": days})
+        if not data:
+            data = _yf_fetch_history(symbol, days)
         if data:
             self.cache[cache_key] = data
         return data

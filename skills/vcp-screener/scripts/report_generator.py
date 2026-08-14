@@ -12,6 +12,33 @@ Outputs:
 import json
 from typing import Optional
 
+# Quote units by yfinance ticker suffix, for display only. London is the trap:
+# LSE lines quote in PENCE, so a pivot of 7720 means GBP 77.20 -- printing that
+# as "$7720.00" is an invitation to size an order two orders of magnitude wrong.
+_CCY_UNIT = {
+    ".L": "p", ".DE": "EUR ", ".AS": "EUR ", ".HE": "EUR ", ".PA": "EUR ",
+    ".BR": "EUR ", ".MI": "EUR ", ".MC": "EUR ", ".VI": "EUR ", ".LS": "EUR ",
+    ".IR": "EUR ", ".SW": "CHF ", ".ST": "SEK ", ".OL": "NOK ", ".CO": "DKK ",
+    ".T": "JPY ", ".HK": "HKD ", ".AX": "AUD ", ".TO": "CAD ",
+}
+
+
+def _unit(symbol: str) -> str:
+    """Currency prefix for a quoted price. Falls back to '$' for US symbols."""
+    s = (symbol or "").upper()
+    for suf, unit in _CCY_UNIT.items():
+        if s.endswith(suf):
+            return unit
+    return "$"
+
+
+def _px(symbol: str, value) -> str:
+    """Format a price in its own quote currency (pence renders as a suffix)."""
+    if value is None:
+        return "N/A"
+    u = _unit(symbol)
+    return f"{value:.2f}p" if u == "p" else f"{u}{value:.2f}"
+
 
 def generate_json_report(
     results: list[dict], metadata: dict, output_file: str, all_results: Optional[list[dict]] = None
@@ -106,7 +133,8 @@ def generate_markdown_report(
             dist_str = f"{dist:+.1f}%" if dist is not None else "—"
             cap_marker = "★" if stock.get("state_cap_applied") else ""
             lines.append(
-                f"| {i} | {sym} | {quality}{cap_marker} | {state} | {ptype} | ${price:.2f} | {dist_str} |"
+                f"| {i} | {sym} | {quality}{cap_marker} | {state} | {ptype} | "
+                f"{_px(sym, price)} | {dist_str} |"
             )
         lines.append("")
         lines.append("★ = State Cap applied (rating downgraded from raw score)")
@@ -244,8 +272,9 @@ def _format_stock_entry(rank: int, stock: dict) -> list[str]:
     mcap_str = (
         f"${mcap / 1e9:.1f}B" if mcap >= 1e9 else (f"${mcap / 1e6:.0f}M" if mcap > 0 else "N/A")
     )
+    sym = stock.get("symbol", "")
     lines.append(
-        f"**Price:** ${price:.2f} | **Market Cap:** {mcap_str} | "
+        f"**Price:** {_px(sym, price)} | **Market Cap:** {mcap_str} | "
         f"**Sector:** {stock.get('sector', 'N/A')}"
     )
     lines.append("")
@@ -314,14 +343,14 @@ def _format_stock_entry(rank: int, stock: dict) -> list[str]:
 
     if trade_status == "BELOW STOP LEVEL":
         # Stop violated: setup is invalidated
-        lines.append(f"- Pivot: ${pivot_price:.2f}" if pivot_price else "- Pivot: N/A")
-        lines.append(f"- Stop-loss: ${stop_loss:.2f}" if stop_loss else "- Stop-loss: N/A")
+        lines.append(f"- Pivot: {_px(sym, pivot_price)}" if pivot_price else "- Pivot: N/A")
+        lines.append(f"- Stop-loss: {_px(sym, stop_loss)}" if stop_loss else "- Stop-loss: N/A")
         lines.append("- **STOP VIOLATED:** Price is below stop-loss level — setup invalidated.")
         lines.append("- Action: Do not enter. Wait for a new base to form.")
     elif dist is not None and dist > 10:
         # Overextended: trade missed
         lines.append(
-            f"- Original pivot: ${pivot_price:.2f} (current price is +{dist:.1f}% above)"
+            f"- Original pivot: {_px(sym, pivot_price)} (current price is +{dist:.1f}% above)"
             if pivot_price
             else "- Pivot: N/A"
         )
@@ -335,8 +364,8 @@ def _format_stock_entry(rank: int, stock: dict) -> list[str]:
         lines.append("- Action: Wait for new base formation and a new pivot point.")
     elif dist is not None and 5 < dist <= 10:
         # Chase warning zone
-        lines.append(f"- Pivot: ${pivot_price:.2f}" if pivot_price else "- Pivot: N/A")
-        lines.append(f"- Stop-loss: ${stop_loss:.2f}" if stop_loss else "- Stop-loss: N/A")
+        lines.append(f"- Pivot: {_px(sym, pivot_price)}" if pivot_price else "- Pivot: N/A")
+        lines.append(f"- Stop-loss: {_px(sym, stop_loss)}" if stop_loss else "- Stop-loss: N/A")
         lines.append(
             f"- Risk from current price: {risk_pct:.1f}%" if risk_pct is not None else "- Risk: N/A"
         )
@@ -345,8 +374,8 @@ def _format_stock_entry(rank: int, stock: dict) -> list[str]:
         )
     else:
         # Normal range (-8% to +5%) or below
-        lines.append(f"- Pivot: ${pivot_price:.2f}" if pivot_price else "- Pivot: N/A")
-        lines.append(f"- Stop-loss: ${stop_loss:.2f}" if stop_loss else "- Stop-loss: N/A")
+        lines.append(f"- Pivot: {_px(sym, pivot_price)}" if pivot_price else "- Pivot: N/A")
+        lines.append(f"- Stop-loss: {_px(sym, stop_loss)}" if stop_loss else "- Stop-loss: N/A")
         lines.append(f"- Risk: {risk_pct:.1f}%" if risk_pct is not None else "- Risk: N/A")
 
     guidance = stock.get("guidance", "N/A")
