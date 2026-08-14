@@ -55,9 +55,37 @@ So: the authoritative inventory is **the installed plugin diffed against upstrea
 side copy. And judge staleness by diffing, not by file mtime — the mtime records when a file
 was patched, not which upstream commit it descends from.
 
-## Reconciliation still owed
+## Reconciliation — done 2026-08-14
 
-`earnings-trade-analyzer` and `pead-screener` are pinned to a locally-forked
-`fmp_client.py` built on an older upstream base. The fallbacks work, but the files have not
-been rebased onto current upstream the way the other patches were. Worth doing before trusting
-a `git merge upstream/main` on those two skills.
+Both `earnings-trade-analyzer` and `pead-screener` `fmp_client.py` forked from upstream
+`634b364` (2026-06-14). Reconciling them turned out to be small:
+
+- **pead-screener** — upstream has not touched that file since `634b364`. Its base *is*
+  current upstream. Nothing to do.
+- **earnings-trade-analyzer** — exactly one upstream commit diverged, `9a4edc3`, a four-line
+  auth fix: FMP's v3 API authenticates via the `apikey` **query parameter**, not an HTTP
+  header. A header is silently ignored, so every FMP call returned 401/403 and fell through to
+  yfinance. Ported.
+
+That bug mattered more than its size suggests. The fallback masked it completely — the screener
+worked, just never via FMP. It would also have survived a paid upgrade, which defeats the point
+of keeping FMP as the primary path.
+
+Every patched file is now a **pure superset** of upstream HEAD — additions only, nothing
+removed — so `git merge upstream/main` should apply cleanly.
+
+### How this was worked out
+
+Find the base by diffing the local file against every historical upstream version of it and
+taking the closest match:
+
+```bash
+for c in $(git log --format=%H upstream/main -- "$FILE"); do
+  git show "$c:$FILE" > /tmp/base.py
+  echo "$(git diff --no-index --numstat /tmp/base.py "$FILE" | awk '{print $1+$2}') $c"
+done | sort -n | head -1
+```
+
+Then `git log <base>..upstream/main -- "$FILE"` lists exactly what has to be ported. Checking
+`git diff --numstat` against upstream HEAD afterwards confirms it: a clean patch shows
+additions and **zero deletions**.
