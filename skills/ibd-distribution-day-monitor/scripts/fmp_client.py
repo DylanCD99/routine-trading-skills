@@ -360,6 +360,14 @@ class FMPClient:
             if data and isinstance(data, list) and data:
                 profile = data[0]
                 if isinstance(profile, dict):
+                    # /stable/profile renamed mktCap -> marketCap and
+                    # exchangeShortName -> exchange; alias back to the v3-style
+                    # keys callers read, matching the alias canslim-screener's
+                    # get_profile() already applies for the same rename.
+                    if "mktCap" not in profile and "marketCap" in profile:
+                        profile["mktCap"] = profile["marketCap"]
+                    if "exchangeShortName" not in profile and "exchange" in profile:
+                        profile["exchangeShortName"] = profile["exchange"]
                     # Preserve the prior lenient behavior: a profile that omits
                     # "symbol" is still returned under the requested symbol.
                     self.cache[cache_key] = profile
